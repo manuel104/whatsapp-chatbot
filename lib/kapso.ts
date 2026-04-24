@@ -47,19 +47,24 @@ class KapsoClient {
   }
 
   /**
-   * Send a text message via WhatsApp
+   * Send a text message via WhatsApp using WhatsApp Business API format
    */
   async sendMessage({ to, message, type = 'text' }: SendMessageParams): Promise<any> {
     try {
-      const response = await this.client.post('/v1/messages/send', {
-        to,
-        type,
-        text: message,
+      // WhatsApp Business API format
+      const response = await this.client.post('', {
+        messaging_product: 'whatsapp',
+        to: to,
+        type: 'text',
+        text: {
+          body: message
+        }
       });
       
       return response.data;
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error sending message via Kapso:', error);
+      console.error('Error details:', error.response?.data || error.message);
       throw error;
     }
   }

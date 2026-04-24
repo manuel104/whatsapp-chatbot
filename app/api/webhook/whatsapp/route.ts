@@ -82,11 +82,9 @@ export async function POST(request: NextRequest) {
 
     console.log(`Received message from ${from}: ${text}`);
 
-    // Send typing indicator
-    await kapsoClient.sendTypingIndicator(from);
-
-    // Mark message as read
-    await kapsoClient.markAsRead(messageId);
+    // Skip typing indicator and mark as read (endpoints not available in Kapso)
+    // await kapsoClient.sendTypingIndicator(from);
+    // await kapsoClient.markAsRead(messageId);
 
     // Get or initialize conversation history for this user
     let history = conversationHistory.get(from) || [];
