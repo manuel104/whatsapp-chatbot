@@ -190,16 +190,21 @@ export async function POST(request: NextRequest) {
     const conversation = await getOrCreateConversation(from);
     const conversationId = conversation.id;
     const isNewConversation = conversation.isNew;
+    const wasInactive = conversation.wasInactive;
     
-    console.log(`Using conversation ${conversationId} for ${from} (new: ${isNewConversation})`);
+    console.log(`Using conversation ${conversationId} for ${from} (new: ${isNewConversation}, wasInactive: ${wasInactive})`);
 
     // Get conversation history from database (last 10 messages)
     const history = await getConversationHistory(conversationId, 10);
 
-    // Add greeting for new conversations
+    // Add greeting for new conversations or reactivated sessions
     let systemMessage = '';
     if (isNewConversation) {
-      systemMessage = 'Esta es una nueva conversación. Saluda amablemente al usuario y preséntate como un asistente útil.';
+      if (wasInactive) {
+        systemMessage = 'La sesión anterior expiró por inactividad (más de 1 hora). Esta es una nueva conversación. IMPORTANTE: Primero agradece al usuario por haber contactado anteriormente, luego salúdalo nuevamente de forma amable y menciona que estás listo para ayudarle en lo que necesite.';
+      } else {
+        systemMessage = 'Esta es una nueva conversación. Saluda amablemente al usuario y preséntate como un asistente útil.';
+      }
     }
 
     // Generate AI response

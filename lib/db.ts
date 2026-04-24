@@ -70,21 +70,48 @@ export async function initDatabase() {
 /**
  * Get or create active conversation for a phone number
  * Returns conversation ID and whether it's new
+ * Automatically closes conversations inactive for more than 1 hour
  */
-export async function getOrCreateConversation(phoneNumber: string): Promise<{ id: string; isNew: boolean }> {
+export async function getOrCreateConversation(phoneNumber: string): Promise<{ id: string; isNew: boolean; wasInactive: boolean }> {
   try {
+    const ONE_HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000);
+    
     // Check for active conversation
     const result = await sql`
-      SELECT id, message_count FROM conversations
+      SELECT id, message_count, last_message_at FROM conversations
       WHERE phone_number = ${phoneNumber} AND is_active = true
       ORDER BY last_message_at DESC
       LIMIT 1
     `;
 
     if (result.length > 0) {
+      const lastMessageAt = new Date(result[0].last_message_at);
+      const isInactive = lastMessageAt < ONE_HOUR_AGO;
+      
+      // If conversation is inactive (>1 hour), close it and create new one
+      if (isInactive) {
+        console.log(`Conversation ${result[0].id} inactive for >1 hour, closing and creating new one`);
+        
+        await sql`
+          UPDATE conversations
+          SET is_active = false
+          WHERE id = ${result[0].id}
+        `;
+        
+        // Create new conversation
+        const conversationId = `conv_${phoneNumber}_${Date.now()}`;
+        await sql`
+          INSERT INTO conversations (id, phone_number)
+          VALUES (${conversationId}, ${phoneNumber})
+        `;
+        
+        return { id: conversationId, isNew: true, wasInactive: true };
+      }
+      
       return {
         id: result[0].id,
-        isNew: result[0].message_count === 0
+        isNew: result[0].message_count === 0,
+        wasInactive: false
       };
     }
 
@@ -95,7 +122,7 @@ export async function getOrCreateConversation(phoneNumber: string): Promise<{ id
       VALUES (${conversationId}, ${phoneNumber})
     `;
 
-    return { id: conversationId, isNew: true };
+    return { id: conversationId, isNew: true, wasInactive: false };
   } catch (error) {
     console.error('Error getting/creating conversation:', error);
     throw error;
