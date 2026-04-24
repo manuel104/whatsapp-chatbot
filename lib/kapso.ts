@@ -52,7 +52,7 @@ class KapsoClient {
   async sendMessage({ to, message, type = 'text' }: SendMessageParams): Promise<any> {
     try {
       // WhatsApp Business API format
-      const response = await this.client.post('', {
+      const response = await this.client.post('/v1/messages', {
         messaging_product: 'whatsapp',
         to: to,
         type: 'text',
