@@ -89,13 +89,12 @@ export async function getOrCreateConversation(phoneNumber: string): Promise<{ id
       const lastMessageAt = new Date(result[0].last_message_at);
       const isInactive = lastMessageAt < SESSION_TIMEOUT;
       
-      // If conversation is inactive (>10 minutes), close it and create new one
+      // If conversation is inactive (>10 minutes), delete it and create new one
       if (isInactive) {
-        console.log(`Conversation ${result[0].id} inactive for >10 minutes, closing and creating new one`);
+        console.log(`Conversation ${result[0].id} inactive for >10 minutes, deleting and creating new one`);
         
         await sql`
-          UPDATE conversations
-          SET is_active = false
+          DELETE FROM conversations
           WHERE id = ${result[0].id}
         `;
         
