@@ -5,6 +5,20 @@ import { generateAIResponse } from '@/lib/ai';
 // Store conversation history in memory (for production, use a database)
 const conversationHistory = new Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>();
 
+// Store processed message IDs to prevent duplicates (expires after 5 minutes)
+const processedMessages = new Map<string, number>();
+const MESSAGE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+// Clean up old processed messages periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [messageId, timestamp] of processedMessages.entries()) {
+    if (now - timestamp > MESSAGE_EXPIRY_MS) {
+      processedMessages.delete(messageId);
+    }
+  }
+}, 60000); // Clean every minute
+
 export async function POST(request: NextRequest) {
   try {
     // Get webhook signature for verification
@@ -85,6 +99,15 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // Check if message was already processed (prevent duplicates)
+    if (processedMessages.has(messageId)) {
+      console.log(`Message ${messageId} already processed, skipping duplicate`);
+      return NextResponse.json({ status: 'duplicate', messageId });
+    }
+    
+    // Mark message as processed
+    processedMessages.set(messageId, Date.now());
+    
     console.log(`Received message from ${from}: ${text}`);
 
     // Skip typing indicator and mark as read (endpoints not available in Kapso)
