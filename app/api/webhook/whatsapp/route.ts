@@ -168,7 +168,7 @@ export async function POST(request: NextRequest) {
           message: response,
           phoneNumberId: phoneNumberId,
           buttons: [
-            { id: 'nueva_conversacion', title: '🔄 Nueva conversación' }
+            { id: 'nueva_conversacion', title: '🔄 Nueva' }
           ]
         });
         
