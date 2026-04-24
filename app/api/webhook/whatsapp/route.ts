@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
     let text: string;
     let messageId: string;
     let phoneNumberId: string;
+    let contactName: string | undefined;
     
     // Handle WhatsApp Business API format (Meta/Facebook)
     if (payload.object === 'whatsapp_business_account') {
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
       const value = changes?.value;
       const messages = value?.messages?.[0];
       const metadata = value?.metadata;
+      const contacts = value?.contacts?.[0];
       
       if (!messages) {
         console.log('No messages in payload');
@@ -83,6 +85,12 @@ export async function POST(request: NextRequest) {
       messageId = messages.id;
       phoneNumberId = metadata?.phone_number_id || '';
       const type = messages.type;
+      
+      // Extract contact name from profile
+      contactName = contacts?.profile?.name;
+      if (contactName) {
+        console.log(`Contact name from WhatsApp profile: ${contactName}`);
+      }
       
       // Handle both text messages and interactive button responses
       if (type === 'text') {
@@ -141,12 +149,12 @@ export async function POST(request: NextRequest) {
       
       if (command === '/nueva' || command === '/new' || command === 'nueva_conversacion') {
         // Start new conversation - NO BUTTONS
-        const conversationId = await startNewConversation(from);
-        const response = '✨ Nueva conversación iniciada. ¿En qué puedo ayudarte?';
+        const conversationId = await startNewConversation(from, contactName);
+        const greeting = contactName ? `✨ Nueva conversación iniciada, ${contactName}. ¿En qué puedo ayudarte?` : '✨ Nueva conversación iniciada. ¿En qué puedo ayudarte?';
         
         await kapsoClient.sendMessage({
           to: from,
-          message: response,
+          message: greeting,
           phoneNumberId: phoneNumberId,
           // No buttons for new conversation response
         });
@@ -192,12 +200,13 @@ export async function POST(request: NextRequest) {
     }
 
     // Get or create conversation
-    const conversation = await getOrCreateConversation(from);
+    const conversation = await getOrCreateConversation(from, contactName);
     const conversationId = conversation.id;
     const isNewConversation = conversation.isNew;
     const wasInactive = conversation.wasInactive;
+    const savedContactName = conversation.contactName;
     
-    console.log(`Using conversation ${conversationId} for ${from} (new: ${isNewConversation}, wasInactive: ${wasInactive})`);
+    console.log(`Using conversation ${conversationId} for ${from} (new: ${isNewConversation}, wasInactive: ${wasInactive}, name: ${savedContactName})`);
 
     // Send typing indicator to show the bot is processing
     await kapsoClient.sendTypingIndicator(from, phoneNumberId);
@@ -210,10 +219,17 @@ export async function POST(request: NextRequest) {
     let systemMessage = '';
     if (isNewConversation) {
       if (wasInactive) {
-        systemMessage = 'La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. IMPORTANTE: Primero agradece al usuario por haber contactado anteriormente, luego salúdalo nuevamente de forma amable y menciona que estás listo para ayudarle en lo que necesite.';
+        systemMessage = savedContactName
+          ? `La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. IMPORTANTE: El nombre del usuario es "${savedContactName}". Primero agradece al usuario por haber contactado anteriormente usando su nombre, luego salúdalo nuevamente de forma amable y menciona que estás listo para ayudarle en lo que necesite.`
+          : 'La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. IMPORTANTE: Primero agradece al usuario por haber contactado anteriormente, luego salúdalo nuevamente de forma amable y menciona que estás listo para ayudarle en lo que necesite.';
       } else {
-        systemMessage = 'Esta es una nueva conversación. Saluda amablemente al usuario y preséntate como un asistente útil.';
+        systemMessage = savedContactName
+          ? `Esta es una nueva conversación. El nombre del usuario es "${savedContactName}". Saluda amablemente al usuario usando su nombre y preséntate como un asistente útil.`
+          : 'Esta es una nueva conversación. Saluda amablemente al usuario y preséntate como un asistente útil.';
       }
+    } else if (savedContactName) {
+      // For ongoing conversations, remind the AI of the user's name
+      systemMessage = `El nombre del usuario es "${savedContactName}". Úsalo naturalmente en la conversación cuando sea apropiado.`;
     }
 
     // Generate AI response
