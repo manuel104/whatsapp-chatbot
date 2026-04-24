@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
       const command = text.toLowerCase().trim();
       
       if (command === '/nueva' || command === '/new' || command === 'nueva_conversacion') {
-        // Start new conversation
+        // Start new conversation - NO BUTTONS
         const conversationId = await startNewConversation(from);
         const response = '✨ Nueva conversación iniciada. ¿En qué puedo ayudarte?';
         
@@ -147,6 +147,7 @@ export async function POST(request: NextRequest) {
           to: from,
           message: response,
           phoneNumberId: phoneNumberId,
+          // No buttons for new conversation response
         });
         
         console.log(`Started new conversation ${conversationId} for ${from}`);
@@ -154,6 +155,7 @@ export async function POST(request: NextRequest) {
       }
       
       if (command === '/ayuda' || command === '/help' || command === 'ver_ayuda') {
+        // Show help - NO BUTTONS
         const response = `🤖 *Comandos disponibles:*
 
 /nueva - Iniciar nueva conversación
@@ -165,10 +167,7 @@ export async function POST(request: NextRequest) {
           to: from,
           message: response,
           phoneNumberId: phoneNumberId,
-          buttons: [
-            { id: 'nueva_conversacion', title: '🔄 Nueva conversación' },
-            { id: 'ver_ayuda', title: '❓ Ayuda' }
-          ]
+          // No buttons for help response
         });
         
         return NextResponse.json({ status: 'success', action: 'show_help' });
@@ -207,15 +206,15 @@ export async function POST(request: NextRequest) {
     await addMessage(conversationId, from, 'user', text);
     await addMessage(conversationId, from, 'assistant', aiResponse);
 
-    // Send response back via Kapso with buttons (only if not a new conversation and has some history)
-    const shouldShowButtons = !isNewConversation && history.length > 2;
+    // Send response back via Kapso with ONLY help button after several interactions
+    // Show button only if: not new conversation AND has more than 4 messages (2+ exchanges)
+    const shouldShowHelpButton = !isNewConversation && history.length > 4;
     
     await kapsoClient.sendMessage({
       to: from,
       message: aiResponse,
       phoneNumberId: phoneNumberId,
-      buttons: shouldShowButtons ? [
-        { id: 'nueva_conversacion', title: '🔄 Nueva conversación' },
+      buttons: shouldShowHelpButton ? [
         { id: 'ver_ayuda', title: '❓ Ayuda' }
       ] : undefined
     });
