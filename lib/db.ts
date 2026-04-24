@@ -39,6 +39,18 @@ export async function initDatabase() {
       )
     `;
 
+    // Add contact_name column if it doesn't exist (migration for existing tables)
+    try {
+      await sql`
+        ALTER TABLE conversations
+        ADD COLUMN IF NOT EXISTS contact_name TEXT
+      `;
+      console.log('Migration: contact_name column added/verified');
+    } catch (migrationError) {
+      // Column might already exist, ignore error
+      console.log('Migration: contact_name column already exists or error:', migrationError);
+    }
+
     // Create messages table
     await sql`
       CREATE TABLE IF NOT EXISTS messages (
@@ -53,12 +65,12 @@ export async function initDatabase() {
 
     // Create index for faster queries
     await sql`
-      CREATE INDEX IF NOT EXISTS idx_conversations_phone 
+      CREATE INDEX IF NOT EXISTS idx_conversations_phone
       ON conversations(phone_number, is_active)
     `;
 
     await sql`
-      CREATE INDEX IF NOT EXISTS idx_messages_conversation 
+      CREATE INDEX IF NOT EXISTS idx_messages_conversation
       ON messages(conversation_id, created_at)
     `;
 
