@@ -201,7 +201,7 @@ export async function POST(request: NextRequest) {
     let systemMessage = '';
     if (isNewConversation) {
       if (wasInactive) {
-        systemMessage = 'La sesión anterior expiró por inactividad (más de 1 hora). Esta es una nueva conversación. IMPORTANTE: Primero agradece al usuario por haber contactado anteriormente, luego salúdalo nuevamente de forma amable y menciona que estás listo para ayudarle en lo que necesite.';
+        systemMessage = 'La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. IMPORTANTE: Primero agradece al usuario por haber contactado anteriormente, luego salúdalo nuevamente de forma amable y menciona que estás listo para ayudarle en lo que necesite.';
       } else {
         systemMessage = 'Esta es una nueva conversación. Saluda amablemente al usuario y preséntate como un asistente útil.';
       }

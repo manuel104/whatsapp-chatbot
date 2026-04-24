@@ -74,7 +74,8 @@ export async function initDatabase() {
  */
 export async function getOrCreateConversation(phoneNumber: string): Promise<{ id: string; isNew: boolean; wasInactive: boolean }> {
   try {
-    const ONE_HOUR_AGO = new Date(Date.now() - 60 * 60 * 1000);
+    // Session timeout: 10 minutes for testing (change to 60 * 60 * 1000 for 1 hour in production)
+    const SESSION_TIMEOUT = new Date(Date.now() - 10 * 60 * 1000); // 10 minutes
     
     // Check for active conversation
     const result = await sql`
@@ -86,11 +87,11 @@ export async function getOrCreateConversation(phoneNumber: string): Promise<{ id
 
     if (result.length > 0) {
       const lastMessageAt = new Date(result[0].last_message_at);
-      const isInactive = lastMessageAt < ONE_HOUR_AGO;
+      const isInactive = lastMessageAt < SESSION_TIMEOUT;
       
-      // If conversation is inactive (>1 hour), close it and create new one
+      // If conversation is inactive (>10 minutes), close it and create new one
       if (isInactive) {
-        console.log(`Conversation ${result[0].id} inactive for >1 hour, closing and creating new one`);
+        console.log(`Conversation ${result[0].id} inactive for >10 minutes, closing and creating new one`);
         
         await sql`
           UPDATE conversations
