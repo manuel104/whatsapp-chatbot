@@ -54,7 +54,7 @@ class KapsoClient {
     try {
       const endpoint = `/meta/whatsapp/v24.0/${phoneNumberId}/messages`;
       
-      const response = await this.client.post(endpoint, {
+      const payload = {
         messaging_product: 'whatsapp',
         recipient_type: 'individual',
         to: to,
@@ -62,12 +62,20 @@ class KapsoClient {
         text: {
           body: message
         }
-      });
+      };
       
+      console.log('Sending message to Kapso:');
+      console.log('Endpoint:', endpoint);
+      console.log('Payload:', JSON.stringify(payload, null, 2));
+      
+      const response = await this.client.post(endpoint, payload);
+      
+      console.log('Message sent successfully:', response.data);
       return response.data;
     } catch (error: any) {
-      console.error('Error sending message via Kapso:', error);
-      console.error('Error details:', error.response?.data || error.message);
+      console.error('Error sending message via Kapso:', error.message);
+      console.error('Status:', error.response?.status);
+      console.error('Error response:', JSON.stringify(error.response?.data, null, 2));
       throw error;
     }
   }
