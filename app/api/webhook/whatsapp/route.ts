@@ -219,17 +219,22 @@ export async function POST(request: NextRequest) {
     let systemMessage = '';
     if (isNewConversation) {
       if (wasInactive) {
+        // Session reactivated after inactivity
         systemMessage = savedContactName
-          ? `La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. IMPORTANTE: El nombre del usuario es "${savedContactName}". Primero agradece al usuario por haber contactado anteriormente usando su nombre, luego salúdalo nuevamente de forma amable y menciona que estás listo para ayudarle en lo que necesite.`
-          : 'La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. IMPORTANTE: Primero agradece al usuario por haber contactado anteriormente, luego salúdalo nuevamente de forma amable y menciona que estás listo para ayudarle en lo que necesite.';
+          ? `La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. El nombre del usuario es "${savedContactName}". IMPORTANTE: Agradece brevemente al usuario por volver a contactar usando su nombre, y luego responde directamente a su pregunta de forma amigable y profesional. NO des un saludo largo, ve directo al punto.`
+          : 'La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. IMPORTANTE: Agradece brevemente al usuario por volver a contactar y luego responde directamente a su pregunta de forma amigable y profesional. NO des un saludo largo, ve directo al punto.';
       } else {
+        // Brand new conversation - first message from user
         systemMessage = savedContactName
-          ? `Esta es una nueva conversación. El nombre del usuario es "${savedContactName}". Saluda amablemente al usuario usando su nombre y preséntate como un asistente útil.`
-          : 'Esta es una nueva conversación. Saluda amablemente al usuario y preséntate como un asistente útil.';
+          ? `Esta es una nueva conversación. El nombre del usuario es "${savedContactName}". IMPORTANTE: Saluda brevemente al usuario usando su nombre, preséntate como un asistente útil, y luego responde directamente a su pregunta. Sé amigable pero conciso en el saludo.`
+          : 'Esta es una nueva conversación. IMPORTANTE: Saluda brevemente al usuario, preséntate como un asistente útil, y luego responde directamente a su pregunta. Sé amigable pero conciso en el saludo.';
       }
     } else if (savedContactName) {
-      // For ongoing conversations, remind the AI of the user's name
-      systemMessage = `El nombre del usuario es "${savedContactName}". Úsalo naturalmente en la conversación cuando sea apropiado.`;
+      // Ongoing conversation - NO greeting, just use name naturally
+      systemMessage = `El nombre del usuario es "${savedContactName}". NO saludes de nuevo. Simplemente responde a su pregunta de forma amigable y profesional, usando su nombre naturalmente cuando sea apropiado (por ejemplo: "Claro ${savedContactName}, con gusto te ayudo con eso...").`;
+    } else {
+      // Ongoing conversation without name
+      systemMessage = 'Conversación en curso. NO saludes de nuevo. Simplemente responde a la pregunta del usuario de forma amigable y profesional.';
     }
 
     // Generate AI response
