@@ -33,7 +33,7 @@ export async function generateAIResponse({
     ];
 
     const { text } = await generateText({
-      model: openrouter('openai/gpt-4o-mini'),
+      model: openrouter('tencent/hy3-preview:free'),
       messages,
       temperature: 0.7,
     });
