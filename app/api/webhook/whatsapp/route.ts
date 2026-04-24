@@ -40,6 +40,7 @@ export async function POST(request: NextRequest) {
     let from: string;
     let text: string;
     let messageId: string;
+    let phoneNumberId: string;
     
     // Handle WhatsApp Business API format (Meta/Facebook)
     if (payload.object === 'whatsapp_business_account') {
@@ -50,6 +51,7 @@ export async function POST(request: NextRequest) {
       const changes = entry?.changes?.[0];
       const value = changes?.value;
       const messages = value?.messages?.[0];
+      const metadata = value?.metadata;
       
       if (!messages) {
         console.log('No messages in payload');
@@ -58,10 +60,16 @@ export async function POST(request: NextRequest) {
       
       from = messages.from;
       messageId = messages.id;
+      phoneNumberId = metadata?.phone_number_id || '';
       const type = messages.type;
       text = messages.text?.body || '';
       
-      console.log(`Message type: ${type}, from: ${from}`);
+      console.log(`Message type: ${type}, from: ${from}, phone_number_id: ${phoneNumberId}`);
+      
+      if (!phoneNumberId) {
+        console.error('Missing phone_number_id in webhook payload');
+        return NextResponse.json({ status: 'error', message: 'Missing phone_number_id' }, { status: 400 });
+      }
       
       // Only process text messages
       if (type !== 'text' || !text) {
@@ -69,15 +77,12 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ status: 'ignored' });
       }
     } else {
-      // Handle old Kapso format (fallback)
-      from = payload.from;
-      text = payload.text;
-      messageId = payload.messageId;
-      const type = payload.type;
-      
-      if (type !== 'text' || !text) {
-        return NextResponse.json({ status: 'ignored' });
-      }
+      // Handle old Kapso format (fallback) - not supported anymore
+      console.error('Old Kapso format not supported. Please use WhatsApp Business API format.');
+      return NextResponse.json({
+        status: 'error',
+        message: 'Unsupported webhook format'
+      }, { status: 400 });
     }
 
     console.log(`Received message from ${from}: ${text}`);
@@ -111,6 +116,7 @@ export async function POST(request: NextRequest) {
     await kapsoClient.sendMessage({
       to: from,
       message: aiResponse,
+      phoneNumberId: phoneNumberId,
     });
 
     console.log(`Sent response to ${from}: ${aiResponse}`);

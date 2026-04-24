@@ -11,6 +11,7 @@ interface KapsoMessage {
 interface SendMessageParams {
   to: string;
   message: string;
+  phoneNumberId: string;
   type?: 'text' | 'image' | 'document';
 }
 
@@ -28,9 +29,9 @@ class KapsoClient {
     }
 
     this.client = axios.create({
-      baseURL: process.env.KAPSO_API_URL || 'https://api.kapso.com',
+      baseURL: 'https://api.kapso.ai',
       headers: {
-        'Authorization': `Bearer ${this.apiKey}`,
+        'X-API-Key': this.apiKey,
         'Content-Type': 'application/json',
       },
       timeout: 10000,
@@ -47,13 +48,15 @@ class KapsoClient {
   }
 
   /**
-   * Send a text message via WhatsApp using WhatsApp Business API format
+   * Send a text message via WhatsApp using Kapso's Meta API format
    */
-  async sendMessage({ to, message, type = 'text' }: SendMessageParams): Promise<any> {
+  async sendMessage({ to, message, phoneNumberId, type = 'text' }: SendMessageParams): Promise<any> {
     try {
-      // WhatsApp Business API format
-      const response = await this.client.post('/v1/messages', {
+      const endpoint = `/meta/whatsapp/v24.0/${phoneNumberId}/messages`;
+      
+      const response = await this.client.post(endpoint, {
         messaging_product: 'whatsapp',
+        recipient_type: 'individual',
         to: to,
         type: 'text',
         text: {
