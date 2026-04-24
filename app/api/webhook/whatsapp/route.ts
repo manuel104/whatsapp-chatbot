@@ -208,18 +208,72 @@ export async function POST(request: NextRequest) {
     await addMessage(conversationId, from, 'user', text);
     await addMessage(conversationId, from, 'assistant', aiResponse);
 
-    // Send response back via Kapso with ONLY help button after several interactions
-    // Show button only if: not new conversation AND has more than 4 messages (2+ exchanges)
+    // Split long messages (WhatsApp limit: 1024 chars for interactive messages with buttons)
+    const MAX_LENGTH_WITH_BUTTONS = 1024;
+    const MAX_LENGTH_WITHOUT_BUTTONS = 4096; // WhatsApp text message limit
     const shouldShowHelpButton = !isNewConversation && history.length > 4;
-    
-    await kapsoClient.sendMessage({
-      to: from,
-      message: aiResponse,
-      phoneNumberId: phoneNumberId,
-      buttons: shouldShowHelpButton ? [
-        { id: 'ver_ayuda', title: '❓ Ayuda' }
-      ] : undefined
-    });
+
+    if (aiResponse.length > MAX_LENGTH_WITH_BUTTONS && shouldShowHelpButton) {
+      // Split message into chunks
+      const chunks: string[] = [];
+      let remaining = aiResponse;
+      
+      while (remaining.length > 0) {
+        if (remaining.length <= MAX_LENGTH_WITH_BUTTONS) {
+          chunks.push(remaining);
+          break;
+        }
+        
+        // Find a good breaking point (paragraph, sentence, or word)
+        let breakPoint = MAX_LENGTH_WITH_BUTTONS;
+        const lastParagraph = remaining.lastIndexOf('\n\n', breakPoint);
+        const lastNewline = remaining.lastIndexOf('\n', breakPoint);
+        const lastPeriod = remaining.lastIndexOf('. ', breakPoint);
+        const lastSpace = remaining.lastIndexOf(' ', breakPoint);
+        
+        if (lastParagraph > MAX_LENGTH_WITH_BUTTONS * 0.7) {
+          breakPoint = lastParagraph + 2;
+        } else if (lastNewline > MAX_LENGTH_WITH_BUTTONS * 0.7) {
+          breakPoint = lastNewline + 1;
+        } else if (lastPeriod > MAX_LENGTH_WITH_BUTTONS * 0.7) {
+          breakPoint = lastPeriod + 2;
+        } else if (lastSpace > MAX_LENGTH_WITH_BUTTONS * 0.7) {
+          breakPoint = lastSpace + 1;
+        }
+        
+        chunks.push(remaining.substring(0, breakPoint).trim());
+        remaining = remaining.substring(breakPoint).trim();
+      }
+      
+      // Send all chunks except the last one without buttons
+      for (let i = 0; i < chunks.length - 1; i++) {
+        await kapsoClient.sendMessage({
+          to: from,
+          message: chunks[i],
+          phoneNumberId: phoneNumberId,
+        });
+        // Small delay between messages
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+      
+      // Send last chunk with button
+      await kapsoClient.sendMessage({
+        to: from,
+        message: chunks[chunks.length - 1],
+        phoneNumberId: phoneNumberId,
+        buttons: [{ id: 'ver_ayuda', title: '❓ Ayuda' }]
+      });
+    } else {
+      // Send single message
+      await kapsoClient.sendMessage({
+        to: from,
+        message: aiResponse,
+        phoneNumberId: phoneNumberId,
+        buttons: shouldShowHelpButton ? [
+          { id: 'ver_ayuda', title: '❓ Ayuda' }
+        ] : undefined
+      });
+    }
 
     console.log(`Sent response to ${from}: ${aiResponse.substring(0, 100)}...`);
 
