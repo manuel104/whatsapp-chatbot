@@ -1,0 +1,11 @@
+# Configuración para Cloudflare Pages
+# No usar account_id aquí, se toma del API token
+
+name = "whatsapp-chatbot"
+compatibility_date = "2024-01-01"
+
+# Los secrets se configuran con: wrangler pages secret put NOMBRE_SECRET --project-name=whatsapp-chatbot
+# Variables públicas (no sensibles)
+[vars]
+NODE_ENV = "production"
+KAPSO_API_URL = "https://api.kapso.com"
