@@ -134,9 +134,10 @@ export async function POST(request: NextRequest) {
       dbInitialized = true;
     }
 
-    // Check for commands
-    if (text.startsWith('/')) {
-      const command = text.toLowerCase().trim();
+    // Check for commands (both / commands and button IDs)
+    const command = text.toLowerCase().trim();
+    
+    if (text.startsWith('/') || command === 'nueva_conversacion' || command === 'ver_ayuda') {
       
       if (command === '/nueva' || command === '/new' || command === 'nueva_conversacion') {
         // Start new conversation - NO BUTTONS
