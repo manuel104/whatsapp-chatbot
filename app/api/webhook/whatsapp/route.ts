@@ -187,17 +187,32 @@ export async function POST(request: NextRequest) {
     }
 
     // Get or create conversation
-    const conversationId = await getOrCreateConversation(from);
-    console.log(`Using conversation ${conversationId} for ${from}`);
+    const conversation = await getOrCreateConversation(from);
+    const conversationId = conversation.id;
+    const isNewConversation = conversation.isNew;
+    
+    console.log(`Using conversation ${conversationId} for ${from} (new: ${isNewConversation})`);
 
     // Get conversation history from database (last 10 messages)
     const history = await getConversationHistory(conversationId, 10);
 
+    // Add greeting for new conversations
+    let systemMessage = '';
+    if (isNewConversation) {
+      systemMessage = 'Esta es una nueva conversación. Saluda amablemente al usuario y preséntate como un asistente útil.';
+    }
+
     // Generate AI response
-    const aiResponse = await generateAIResponse({
+    let aiResponse = await generateAIResponse({
       message: text,
       conversationHistory: history,
+      systemPrompt: systemMessage || 'Eres un asistente útil de WhatsApp. Responde de manera amigable, concisa y profesional en español.',
     });
+
+    // Add reminder about starting new conversation (only if not a new conversation)
+    if (!isNewConversation && history.length > 2) {
+      aiResponse += '\n\n_💡 Tip: Escribe /nueva para iniciar una conversación nueva_';
+    }
 
     // Save user message and AI response to database
     await addMessage(conversationId, from, 'user', text);
@@ -210,7 +225,7 @@ export async function POST(request: NextRequest) {
       phoneNumberId: phoneNumberId,
     });
 
-    console.log(`Sent response to ${from}: ${aiResponse}`);
+    console.log(`Sent response to ${from}: ${aiResponse.substring(0, 100)}...`);
 
     return NextResponse.json({
       status: 'success',

@@ -69,19 +69,23 @@ export async function initDatabase() {
 
 /**
  * Get or create active conversation for a phone number
+ * Returns conversation ID and whether it's new
  */
-export async function getOrCreateConversation(phoneNumber: string): Promise<string> {
+export async function getOrCreateConversation(phoneNumber: string): Promise<{ id: string; isNew: boolean }> {
   try {
     // Check for active conversation
     const result = await sql`
-      SELECT id FROM conversations 
+      SELECT id, message_count FROM conversations
       WHERE phone_number = ${phoneNumber} AND is_active = true
       ORDER BY last_message_at DESC
       LIMIT 1
     `;
 
     if (result.length > 0) {
-      return result[0].id;
+      return {
+        id: result[0].id,
+        isNew: result[0].message_count === 0
+      };
     }
 
     // Create new conversation
@@ -91,7 +95,7 @@ export async function getOrCreateConversation(phoneNumber: string): Promise<stri
       VALUES (${conversationId}, ${phoneNumber})
     `;
 
-    return conversationId;
+    return { id: conversationId, isNew: true };
   } catch (error) {
     console.error('Error getting/creating conversation:', error);
     throw error;
