@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getKapsoClient } from '@/lib/kapso';
 import { generateAIResponse } from '@/lib/ai';
-
-// Store conversation history in memory (for production, use a database)
-const conversationHistory = new Map<string, Array<{ role: 'user' | 'assistant'; content: string }>>();
+import {
+  getOrCreateConversation,
+  startNewConversation,
+  addMessage,
+  getConversationHistory,
+  getUserConversations,
+  initDatabase
+} from '@/lib/db';
 
 // Store processed message IDs to prevent duplicates (expires after 5 minutes)
 const processedMessages = new Map<string, number>();
 const MESSAGE_EXPIRY_MS = 5 * 60 * 1000; // 5 minutes
+
+// Initialize database on first load
+let dbInitialized = false;
 
 // Clean up old processed messages periodically
 setInterval(() => {
@@ -110,17 +118,80 @@ export async function POST(request: NextRequest) {
     
     console.log(`Received message from ${from}: ${text}`);
 
-    // Skip typing indicator and mark as read (endpoints not available in Kapso)
-    // await kapsoClient.sendTypingIndicator(from);
-    // await kapsoClient.markAsRead(messageId);
-
-    // Get or initialize conversation history for this user
-    let history = conversationHistory.get(from) || [];
-    
-    // Limit history to last 10 messages to avoid token limits
-    if (history.length > 10) {
-      history = history.slice(-10);
+    // Initialize database if not done yet
+    if (!dbInitialized) {
+      await initDatabase();
+      dbInitialized = true;
     }
+
+    // Check for commands
+    if (text.startsWith('/')) {
+      const command = text.toLowerCase().trim();
+      
+      if (command === '/nueva' || command === '/new') {
+        // Start new conversation
+        const conversationId = await startNewConversation(from);
+        const response = '✨ Nueva conversación iniciada. ¿En qué puedo ayudarte?';
+        
+        await kapsoClient.sendMessage({
+          to: from,
+          message: response,
+          phoneNumberId: phoneNumberId,
+        });
+        
+        console.log(`Started new conversation ${conversationId} for ${from}`);
+        return NextResponse.json({ status: 'success', action: 'new_conversation' });
+      }
+      
+      if (command === '/historial' || command === '/history') {
+        // Get conversation history
+        const conversations = await getUserConversations(from);
+        let response = '📋 *Tus conversaciones:*\n\n';
+        
+        if (conversations.length === 0) {
+          response = 'No tienes conversaciones previas.';
+        } else {
+          conversations.forEach((conv, index) => {
+            const date = conv.last_message_at.toLocaleDateString('es-ES');
+            response += `${index + 1}. ${date} - ${conv.message_count} mensajes\n`;
+          });
+          response += '\n💡 Escribe /nueva para iniciar una conversación nueva';
+        }
+        
+        await kapsoClient.sendMessage({
+          to: from,
+          message: response,
+          phoneNumberId: phoneNumberId,
+        });
+        
+        return NextResponse.json({ status: 'success', action: 'show_history' });
+      }
+      
+      if (command === '/ayuda' || command === '/help') {
+        const response = `🤖 *Comandos disponibles:*
+
+/nueva - Iniciar nueva conversación
+/historial - Ver tus conversaciones
+/ayuda - Mostrar esta ayuda
+
+💬 Simplemente escribe tu mensaje para chatear conmigo.`;
+        
+        await kapsoClient.sendMessage({
+          to: from,
+          message: response,
+          phoneNumberId: phoneNumberId,
+        });
+        
+        return NextResponse.json({ status: 'success', action: 'show_help' });
+      }
+    }
+
+    // Get or create conversation
+    const conversationId = await getOrCreateConversation(from);
+    console.log(`Using conversation ${conversationId} for ${from}`);
+
+    // Get conversation history from database (last 10 messages)
+    const history = await getConversationHistory(conversationId, 10);
 
     // Generate AI response
     const aiResponse = await generateAIResponse({
@@ -128,12 +199,9 @@ export async function POST(request: NextRequest) {
       conversationHistory: history,
     });
 
-    // Update conversation history
-    history.push(
-      { role: 'user', content: text },
-      { role: 'assistant', content: aiResponse }
-    );
-    conversationHistory.set(from, history);
+    // Save user message and AI response to database
+    await addMessage(conversationId, from, 'user', text);
+    await addMessage(conversationId, from, 'assistant', aiResponse);
 
     // Send response back via Kapso
     await kapsoClient.sendMessage({
