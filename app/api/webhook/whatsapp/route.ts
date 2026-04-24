@@ -37,12 +37,47 @@ export async function POST(request: NextRequest) {
     // Get Kapso client
     const kapsoClient = getKapsoClient();
     
-    // Extract message details
-    const { from, text, messageId, type } = payload;
-
-    // Only process text messages
-    if (type !== 'text' || !text) {
-      return NextResponse.json({ status: 'ignored' });
+    let from: string;
+    let text: string;
+    let messageId: string;
+    
+    // Handle WhatsApp Business API format (Meta/Facebook)
+    if (payload.object === 'whatsapp_business_account') {
+      console.log('Processing WhatsApp Business API webhook');
+      
+      // Extract message from WhatsApp Business API format
+      const entry = payload.entry?.[0];
+      const changes = entry?.changes?.[0];
+      const value = changes?.value;
+      const messages = value?.messages?.[0];
+      
+      if (!messages) {
+        console.log('No messages in payload');
+        return NextResponse.json({ status: 'no_messages' });
+      }
+      
+      from = messages.from;
+      messageId = messages.id;
+      const type = messages.type;
+      text = messages.text?.body || '';
+      
+      console.log(`Message type: ${type}, from: ${from}`);
+      
+      // Only process text messages
+      if (type !== 'text' || !text) {
+        console.log(`Ignoring non-text message of type: ${type}`);
+        return NextResponse.json({ status: 'ignored' });
+      }
+    } else {
+      // Handle old Kapso format (fallback)
+      from = payload.from;
+      text = payload.text;
+      messageId = payload.messageId;
+      const type = payload.type;
+      
+      if (type !== 'text' || !text) {
+        return NextResponse.json({ status: 'ignored' });
+      }
     }
 
     console.log(`Received message from ${from}: ${text}`);
