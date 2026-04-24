@@ -163,14 +163,28 @@ export async function POST(request: NextRequest) {
 
 💬 Simplemente escribe tu mensaje para chatear conmigo.`;
         
-        await kapsoClient.sendMessage({
-          to: from,
-          message: response,
-          phoneNumberId: phoneNumberId,
-          buttons: [
-            { id: 'nueva_conversacion', title: '🔄 Nueva' }
-          ]
-        });
+        console.log('Sending help message with button');
+        console.log('Response length:', response.length);
+        
+        try {
+          await kapsoClient.sendMessage({
+            to: from,
+            message: response,
+            phoneNumberId: phoneNumberId,
+            buttons: [
+              { id: 'nueva_conversacion', title: 'Nueva' }
+            ]
+          });
+          console.log('Help message sent successfully with button');
+        } catch (error) {
+          console.error('Error sending help message with button:', error);
+          // Fallback: send without button
+          await kapsoClient.sendMessage({
+            to: from,
+            message: response,
+            phoneNumberId: phoneNumberId,
+          });
+        }
         
         return NextResponse.json({ status: 'success', action: 'show_help' });
       }
