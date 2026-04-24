@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
       }
       
       if (command === '/ayuda' || command === '/help' || command === 'ver_ayuda') {
-        // Show help - NO BUTTONS
+        // Show help - WITH Nueva conversación button
         const response = `🤖 *Comandos disponibles:*
 
 /nueva - Iniciar nueva conversación
@@ -167,7 +167,9 @@ export async function POST(request: NextRequest) {
           to: from,
           message: response,
           phoneNumberId: phoneNumberId,
-          // No buttons for help response
+          buttons: [
+            { id: 'nueva_conversacion', title: '🔄 Nueva conversación' }
+          ]
         });
         
         return NextResponse.json({ status: 'success', action: 'show_help' });
