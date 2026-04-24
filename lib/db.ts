@@ -131,14 +131,13 @@ export async function getOrCreateConversation(phoneNumber: string): Promise<{ id
 }
 
 /**
- * Start a new conversation (closes current one and creates new)
+ * Start a new conversation (deletes current one and creates new)
  */
 export async function startNewConversation(phoneNumber: string): Promise<string> {
   try {
-    // Close all active conversations for this phone number
+    // Delete all active conversations and their messages for this phone number
     await sql`
-      UPDATE conversations 
-      SET is_active = false 
+      DELETE FROM conversations
       WHERE phone_number = ${phoneNumber} AND is_active = true
     `;
 
@@ -149,7 +148,7 @@ export async function startNewConversation(phoneNumber: string): Promise<string>
       VALUES (${conversationId}, ${phoneNumber})
     `;
 
-    console.log(`Started new conversation ${conversationId} for ${phoneNumber}`);
+    console.log(`Started new conversation ${conversationId} for ${phoneNumber} (previous deleted)`);
     return conversationId;
   } catch (error) {
     console.error('Error starting new conversation:', error);
@@ -213,53 +212,5 @@ export async function getConversationHistory(
   }
 }
 
-/**
- * Get all conversations for a phone number
- */
-export async function getUserConversations(phoneNumber: string): Promise<Conversation[]> {
-  try {
-    const result = await sql`
-      SELECT id, phone_number, started_at, last_message_at, message_count
-      FROM conversations 
-      WHERE phone_number = ${phoneNumber}
-      ORDER BY last_message_at DESC
-      LIMIT 10
-    `;
-
-    return result.map(row => ({
-      id: row.id,
-      phone_number: row.phone_number,
-      started_at: new Date(row.started_at),
-      last_message_at: new Date(row.last_message_at),
-      message_count: row.message_count
-    }));
-  } catch (error) {
-    console.error('Error getting user conversations:', error);
-    throw error;
-  }
-}
-
-/**
- * Get conversation statistics
- */
-export async function getConversationStats(conversationId: string) {
-  try {
-    const result = await sql`
-      SELECT 
-        COUNT(*) as total_messages,
-        COUNT(CASE WHEN role = 'user' THEN 1 END) as user_messages,
-        COUNT(CASE WHEN role = 'assistant' THEN 1 END) as assistant_messages,
-        MIN(created_at) as first_message,
-        MAX(created_at) as last_message
-      FROM messages 
-      WHERE conversation_id = ${conversationId}
-    `;
-
-    return result[0];
-  } catch (error) {
-    console.error('Error getting conversation stats:', error);
-    throw error;
-  }
-}
 
 // Made with Bob

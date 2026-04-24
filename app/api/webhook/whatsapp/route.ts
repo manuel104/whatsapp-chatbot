@@ -6,7 +6,6 @@ import {
   startNewConversation,
   addMessage,
   getConversationHistory,
-  getUserConversations,
   initDatabase
 } from '@/lib/db';
 
@@ -84,7 +83,18 @@ export async function POST(request: NextRequest) {
       messageId = messages.id;
       phoneNumberId = metadata?.phone_number_id || '';
       const type = messages.type;
-      text = messages.text?.body || '';
+      
+      // Handle both text messages and interactive button responses
+      if (type === 'text') {
+        text = messages.text?.body || '';
+      } else if (type === 'interactive') {
+        // Button response
+        const buttonReply = messages.interactive?.button_reply;
+        text = buttonReply?.id || buttonReply?.title || '';
+        console.log(`Button clicked: ${text}`);
+      } else {
+        text = '';
+      }
       
       console.log(`Message type: ${type}, from: ${from}, phone_number_id: ${phoneNumberId}`);
       
@@ -93,9 +103,9 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ status: 'error', message: 'Missing phone_number_id' }, { status: 400 });
       }
       
-      // Only process text messages
-      if (type !== 'text' || !text) {
-        console.log(`Ignoring non-text message of type: ${type}`);
+      // Only process text and interactive messages
+      if ((type !== 'text' && type !== 'interactive') || !text) {
+        console.log(`Ignoring message of type: ${type}`);
         return NextResponse.json({ status: 'ignored' });
       }
     } else {
@@ -128,7 +138,7 @@ export async function POST(request: NextRequest) {
     if (text.startsWith('/')) {
       const command = text.toLowerCase().trim();
       
-      if (command === '/nueva' || command === '/new') {
+      if (command === '/nueva' || command === '/new' || command === 'nueva_conversacion') {
         // Start new conversation
         const conversationId = await startNewConversation(from);
         const response = '✨ Nueva conversación iniciada. ¿En qué puedo ayudarte?';
@@ -143,35 +153,10 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ status: 'success', action: 'new_conversation' });
       }
       
-      if (command === '/historial' || command === '/history') {
-        // Get conversation history
-        const conversations = await getUserConversations(from);
-        let response = '📋 *Tus conversaciones:*\n\n';
-        
-        if (conversations.length === 0) {
-          response = 'No tienes conversaciones previas.';
-        } else {
-          conversations.forEach((conv, index) => {
-            const date = conv.last_message_at.toLocaleDateString('es-ES');
-            response += `${index + 1}. ${date} - ${conv.message_count} mensajes\n`;
-          });
-          response += '\n💡 Escribe /nueva para iniciar una conversación nueva';
-        }
-        
-        await kapsoClient.sendMessage({
-          to: from,
-          message: response,
-          phoneNumberId: phoneNumberId,
-        });
-        
-        return NextResponse.json({ status: 'success', action: 'show_history' });
-      }
-      
-      if (command === '/ayuda' || command === '/help') {
+      if (command === '/ayuda' || command === '/help' || command === 'ver_ayuda') {
         const response = `🤖 *Comandos disponibles:*
 
 /nueva - Iniciar nueva conversación
-/historial - Ver tus conversaciones
 /ayuda - Mostrar esta ayuda
 
 💬 Simplemente escribe tu mensaje para chatear conmigo.`;
@@ -180,6 +165,10 @@ export async function POST(request: NextRequest) {
           to: from,
           message: response,
           phoneNumberId: phoneNumberId,
+          buttons: [
+            { id: 'nueva_conversacion', title: '🔄 Nueva conversación' },
+            { id: 'ver_ayuda', title: '❓ Ayuda' }
+          ]
         });
         
         return NextResponse.json({ status: 'success', action: 'show_help' });
@@ -214,20 +203,21 @@ export async function POST(request: NextRequest) {
       systemPrompt: systemMessage || 'Eres un asistente útil de WhatsApp. Responde de manera amigable, concisa y profesional en español.',
     });
 
-    // Add reminder about starting new conversation (only if not a new conversation)
-    if (!isNewConversation && history.length > 2) {
-      aiResponse += '\n\n_💡 Tip: Escribe /nueva para iniciar una conversación nueva_';
-    }
-
     // Save user message and AI response to database
     await addMessage(conversationId, from, 'user', text);
     await addMessage(conversationId, from, 'assistant', aiResponse);
 
-    // Send response back via Kapso
+    // Send response back via Kapso with buttons (only if not a new conversation and has some history)
+    const shouldShowButtons = !isNewConversation && history.length > 2;
+    
     await kapsoClient.sendMessage({
       to: from,
       message: aiResponse,
       phoneNumberId: phoneNumberId,
+      buttons: shouldShowButtons ? [
+        { id: 'nueva_conversacion', title: '🔄 Nueva conversación' },
+        { id: 'ver_ayuda', title: '❓ Ayuda' }
+      ] : undefined
     });
 
     console.log(`Sent response to ${from}: ${aiResponse.substring(0, 100)}...`);

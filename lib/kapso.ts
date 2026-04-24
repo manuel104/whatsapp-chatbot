@@ -12,7 +12,11 @@ interface SendMessageParams {
   to: string;
   message: string;
   phoneNumberId: string;
-  type?: 'text' | 'image' | 'document';
+  type?: 'text' | 'image' | 'document' | 'interactive';
+  buttons?: Array<{
+    id: string;
+    title: string;
+  }>;
 }
 
 class KapsoClient {
@@ -50,19 +54,47 @@ class KapsoClient {
   /**
    * Send a text message via WhatsApp using Kapso's Meta API format
    */
-  async sendMessage({ to, message, phoneNumberId, type = 'text' }: SendMessageParams): Promise<any> {
+  async sendMessage({ to, message, phoneNumberId, type = 'text', buttons }: SendMessageParams): Promise<any> {
     try {
       const endpoint = `/meta/whatsapp/v24.0/${phoneNumberId}/messages`;
       
-      const payload = {
-        messaging_product: 'whatsapp',
-        recipient_type: 'individual',
-        to: to,
-        type: 'text',
-        text: {
-          body: message
-        }
-      };
+      let payload: any;
+      
+      // If buttons are provided, use interactive message type
+      if (buttons && buttons.length > 0) {
+        payload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: to,
+          type: 'interactive',
+          interactive: {
+            type: 'button',
+            body: {
+              text: message
+            },
+            action: {
+              buttons: buttons.map(btn => ({
+                type: 'reply',
+                reply: {
+                  id: btn.id,
+                  title: btn.title
+                }
+              }))
+            }
+          }
+        };
+      } else {
+        // Regular text message
+        payload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: to,
+          type: 'text',
+          text: {
+            body: message
+          }
+        };
+      }
       
       console.log('Sending message to Kapso:');
       console.log('Endpoint:', endpoint);
