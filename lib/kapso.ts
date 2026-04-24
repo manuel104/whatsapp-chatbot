@@ -126,16 +126,46 @@ class KapsoClient {
   }
 
   /**
-   * Send typing indicator
+   * Send typing indicator (WhatsApp Business API format)
    */
-  async sendTypingIndicator(to: string): Promise<void> {
+  async sendTypingIndicator(to: string, phoneNumberId: string): Promise<void> {
     try {
-      await this.client.post('/v1/messages/typing', {
-        to,
-        typing: true,
-      });
+      const endpoint = `/meta/whatsapp/v24.0/${phoneNumberId}/messages`;
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: to,
+        type: 'text',
+        text: {
+          body: '⏳' // Typing indicator emoji
+        }
+      };
+      
+      console.log('Sending typing indicator to:', to);
+      await this.client.post(endpoint, payload);
     } catch (error) {
       console.error('Error sending typing indicator:', error);
+      // Don't throw - typing indicator is not critical
+    }
+  }
+
+  /**
+   * Send "mark as read" status (WhatsApp Business API format)
+   */
+  async markMessageAsRead(messageId: string, phoneNumberId: string): Promise<void> {
+    try {
+      const endpoint = `/meta/whatsapp/v24.0/${phoneNumberId}/messages`;
+      const payload = {
+        messaging_product: 'whatsapp',
+        status: 'read',
+        message_id: messageId
+      };
+      
+      console.log('Marking message as read:', messageId);
+      await this.client.post(endpoint, payload);
+    } catch (error) {
+      console.error('Error marking message as read:', error);
+      // Don't throw - read status is not critical
     }
   }
 }

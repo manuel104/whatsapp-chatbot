@@ -199,6 +199,10 @@ export async function POST(request: NextRequest) {
     
     console.log(`Using conversation ${conversationId} for ${from} (new: ${isNewConversation}, wasInactive: ${wasInactive})`);
 
+    // Send typing indicator to show the bot is processing
+    await kapsoClient.sendTypingIndicator(from, phoneNumberId);
+    console.log('Typing indicator sent');
+
     // Get conversation history from database (last 10 messages)
     const history = await getConversationHistory(conversationId, 10);
 
