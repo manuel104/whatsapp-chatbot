@@ -141,6 +141,7 @@ export async function generateInvoicePDF(
 
 /**
  * Sube el PDF a Google Drive y retorna el link público
+ * IMPORTANTE: Requiere un FOLDER_ID de Google Drive donde el Service Account tenga permisos
  */
 export async function uploadToGoogleDrive(
   pdfBuffer: Buffer,
@@ -150,6 +151,11 @@ export async function uploadToGoogleDrive(
     console.log('Uploading invoice to Google Drive:', fileName);
     
     const credentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_KEY || '{}');
+    const DRIVE_FOLDER_ID = process.env.GOOGLE_DRIVE_FOLDER_ID;
+    
+    if (!DRIVE_FOLDER_ID) {
+      throw new Error('GOOGLE_DRIVE_FOLDER_ID environment variable is required. Please create a folder in Google Drive and share it with the service account email.');
+    }
     
     const auth = new google.auth.GoogleAuth({
       credentials,
@@ -158,10 +164,11 @@ export async function uploadToGoogleDrive(
     
     const drive = google.drive({ version: 'v3', auth });
     
-    // Crear archivo en Drive
+    // Crear archivo en Drive dentro de la carpeta especificada
     const fileMetadata = {
       name: fileName,
       mimeType: 'application/pdf',
+      parents: [DRIVE_FOLDER_ID], // Subir a carpeta específica
     };
     
     // Convertir Buffer a Stream para Google Drive API
