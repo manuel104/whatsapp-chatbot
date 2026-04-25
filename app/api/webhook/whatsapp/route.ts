@@ -10,9 +10,13 @@ import {
   getCart,
   addToCart,
   clearCart,
-  getCartTotal
+  getCartTotal,
+  createPendingOrder,
+  getPendingOrder,
+  updateOrderStatus,
+  markOrderAsNotified
 } from '@/lib/db';
-import { getStoreData, searchProducts, getProductsByCategory } from '@/lib/google-sheets';
+import { getStoreData, searchProducts, getProductsByCategory, recordSale } from '@/lib/google-sheets';
 import {
   detectIntent,
   generateMainMenu,
@@ -24,6 +28,13 @@ import {
   getCartButtons,
   getPaymentButtons
 } from '@/lib/store-helpers';
+import {
+  notifyAdminNewOrder,
+  notifyCustomerOrderStatus,
+  parseAdminResponse,
+  isAdminPhone
+} from '@/lib/admin-notifications';
+import { generateAndUploadInvoice } from '@/lib/invoice-generator';
 
 // Store processed message IDs to prevent duplicates (expires after 5 minutes)
 const processedMessages = new Map<string, number>();
@@ -161,6 +172,116 @@ export async function POST(request: NextRequest) {
     // Load store data
     const storeData = await getStoreData();
     
+    // Check if this is an admin response (SI/NO + ORDER_ID)
+    const isAdmin = await isAdminPhone(from);
+    if (isAdmin) {
+      const adminResponse = parseAdminResponse(text);
+      
+      if (adminResponse.action && adminResponse.orderId) {
+        // Get the pending order
+        const order = await getPendingOrder(adminResponse.orderId);
+        
+        if (!order) {
+          await kapsoClient.sendMessage({
+            to: from,
+            message: `❌ No se encontró el pedido ${adminResponse.orderId}`,
+            phoneNumberId: phoneNumberId,
+          });
+          return NextResponse.json({ status: 'success', action: 'order_not_found' });
+        }
+        
+        if (order.status !== 'PENDING') {
+          await kapsoClient.sendMessage({
+            to: from,
+            message: `⚠️ El pedido ${adminResponse.orderId} ya fue procesado (${order.status})`,
+            phoneNumberId: phoneNumberId,
+          });
+          return NextResponse.json({ status: 'success', action: 'order_already_processed' });
+        }
+        
+        // Update order status
+        const newStatus = adminResponse.action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+        await updateOrderStatus(adminResponse.orderId, newStatus);
+        
+        // Notify customer
+        await notifyCustomerOrderStatus(
+          order.phone_number,
+          order.contact_name,
+          adminResponse.orderId,
+          newStatus,
+          phoneNumberId
+        );
+        
+        // If approved, generate invoice and record sale
+        let invoiceUrl = '';
+        if (newStatus === 'APPROVED') {
+          try {
+            // Generate invoice PDF and upload to Google Drive
+            console.log('Generating invoice...');
+            invoiceUrl = await generateAndUploadInvoice(
+              adminResponse.orderId,
+              order.contact_name,
+              order.phone_number,
+              order.items,
+              order.total,
+              order.payment_method
+            );
+            console.log('Invoice generated:', invoiceUrl);
+            
+            // Record sale in Google Sheets with invoice URL
+            const productsString = order.items.map(item => `${item.product_id}x${item.quantity}`).join(',');
+            await recordSale({
+              fecha: new Date().toISOString(),
+              cliente_tel: order.phone_number,
+              cliente_nombre: order.contact_name,
+              productos: productsString,
+              total: order.total,
+              estado: 'COMPLETADA',
+              factura_url: invoiceUrl,
+            });
+            
+            // Send invoice to customer
+            const invoiceMessage = `📄 *FACTURA*
+
+Tu factura ha sido generada exitosamente.
+
+📥 Descarga tu factura aquí:
+${invoiceUrl}
+
+¡Gracias por tu compra! 🎉`;
+            
+            await kapsoClient.sendMessage({
+              to: order.phone_number,
+              message: invoiceMessage,
+              phoneNumberId: phoneNumberId,
+            });
+            
+            console.log('Invoice sent to customer');
+          } catch (error) {
+            console.error('Error generating/sending invoice:', error);
+            // Continue even if invoice fails
+          }
+        }
+        
+        // Confirm to admin
+        const confirmMessage = newStatus === 'APPROVED'
+          ? `✅ Pedido ${adminResponse.orderId} APROBADO
+
+El cliente ha sido notificado.
+La venta fue registrada.
+${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'}`
+          : `❌ Pedido ${adminResponse.orderId} RECHAZADO\n\nEl cliente ha sido notificado.`;
+        
+        await kapsoClient.sendMessage({
+          to: from,
+          message: confirmMessage,
+          phoneNumberId: phoneNumberId,
+        });
+        
+        return NextResponse.json({ status: 'success', action: 'order_processed', newStatus, invoiceUrl });
+      }
+    }
+    
     // Check for commands (both / commands and button IDs)
     const command = text.toLowerCase().trim();
     
@@ -267,15 +388,75 @@ export async function POST(request: NextRequest) {
       const paymentMethod = storeData.paymentMethods.find(p => p.id === paymentId);
       
       if (paymentMethod) {
-        const responseText = `💳 *${paymentMethod.nombre}*\n\n${paymentMethod.instrucciones}`;
-        await kapsoClient.sendMessage({
-          to: from,
-          message: responseText,
-          phoneNumberId: phoneNumberId,
-        });
+        // Get cart items and total
+        const cartItems = await getCart(conversation.id);
+        const total = await getCartTotal(conversation.id);
         
-        // Save bot response
-        await addMessage(conversation.id, from, 'assistant', responseText);
+        // Check if payment method requires admin confirmation
+        const requiresConfirmation = ['nequi', 'bancolombia', 'efectivo'].includes(paymentId.toLowerCase());
+        
+        if (requiresConfirmation && cartItems.length > 0) {
+          // Create pending order
+          const orderId = await createPendingOrder(
+            conversation.id,
+            from,
+            conversation.contactName || 'Cliente',
+            cartItems,
+            total,
+            paymentMethod.nombre
+          );
+          
+          // Notify admin
+          await notifyAdminNewOrder(
+            orderId,
+            from,
+            conversation.contactName || 'Cliente',
+            cartItems,
+            total,
+            paymentMethod.nombre,
+            phoneNumberId
+          );
+          
+          // Mark as notified
+          await markOrderAsNotified(orderId);
+          
+          // Clear cart
+          await clearCart(conversation.id);
+          
+          const responseText = `✅ *Pedido Recibido*
+
+Tu pedido *${orderId}* ha sido recibido y está pendiente de confirmación.
+
+💳 *Método de pago:* ${paymentMethod.nombre}
+💰 *Total:* ${storeData.storeInfo.simbolo_moneda}${total.toLocaleString()}
+
+📋 *Instrucciones:*
+${paymentMethod.instrucciones}
+
+⏳ Un administrador revisará tu pedido y te confirmará en breve.
+
+¡Gracias por tu compra! 🎉`;
+          
+          await kapsoClient.sendMessage({
+            to: from,
+            message: responseText,
+            phoneNumberId: phoneNumberId,
+          });
+          
+          // Save bot response
+          await addMessage(conversation.id, from, 'assistant', responseText);
+        } else {
+          // Payment method doesn't require confirmation or cart is empty
+          const responseText = `💳 *${paymentMethod.nombre}*\n\n${paymentMethod.instrucciones}`;
+          await kapsoClient.sendMessage({
+            to: from,
+            message: responseText,
+            phoneNumberId: phoneNumberId,
+          });
+          
+          // Save bot response
+          await addMessage(conversation.id, from, 'assistant', responseText);
+        }
       }
       
       return NextResponse.json({ status: 'success', action: 'show_payment' });

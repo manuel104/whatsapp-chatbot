@@ -1,0 +1,159 @@
+/**
+ * Sistema de notificaciones al administrador para confirmación de pagos
+ */
+
+import { getKapsoClient } from './kapso';
+import { getStoreData } from './google-sheets';
+import type { CartItem } from '@/types/store';
+import type { PendingOrder } from './db';
+
+/**
+ * Envía notificación al administrador sobre un pedido pendiente
+ */
+export async function notifyAdminNewOrder(
+  orderId: string,
+  customerPhone: string,
+  customerName: string,
+  items: CartItem[],
+  total: number,
+  paymentMethod: string,
+  phoneNumberId: string
+): Promise<void> {
+  try {
+    const storeData = await getStoreData();
+    const { simbolo_moneda } = storeData.storeInfo;
+    const { admin_telefono } = storeData.config;
+
+    if (!admin_telefono) {
+      console.warn('Admin phone not configured, skipping notification');
+      return;
+    }
+
+    // Formatear lista de productos
+    const itemsList = items.map((item, index) => 
+      `${index + 1}. ${item.product_name} x${item.quantity} - ${simbolo_moneda}${(item.price * item.quantity).toLocaleString()}`
+    ).join('\n');
+
+    const message = `🔔 *NUEVO PEDIDO PENDIENTE*
+
+📋 *ID:* ${orderId}
+👤 *Cliente:* ${customerName}
+📱 *Teléfono:* ${customerPhone}
+💳 *Método de pago:* ${paymentMethod}
+
+🛒 *Productos:*
+${itemsList}
+
+💰 *Total:* ${simbolo_moneda}${total.toLocaleString()}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *ACCIÓN REQUERIDA*
+
+Para aprobar este pedido, responde:
+✅ *SI ${orderId}*
+
+Para rechazar este pedido, responde:
+❌ *NO ${orderId}*
+
+⏰ Pedido recibido: ${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}`;
+
+    const kapsoClient = getKapsoClient();
+    await kapsoClient.sendMessage({
+      to: admin_telefono,
+      message: message,
+      phoneNumberId: phoneNumberId,
+    });
+
+    console.log(`Admin notification sent for order ${orderId}`);
+  } catch (error) {
+    console.error('Error sending admin notification:', error);
+    throw error;
+  }
+}
+
+/**
+ * Notifica al cliente sobre el estado de su pedido
+ */
+export async function notifyCustomerOrderStatus(
+  customerPhone: string,
+  customerName: string,
+  orderId: string,
+  status: 'APPROVED' | 'REJECTED',
+  phoneNumberId: string
+): Promise<void> {
+  try {
+    const kapsoClient = getKapsoClient();
+    
+    let message: string;
+    if (status === 'APPROVED') {
+      message = `✅ *PEDIDO APROBADO*
+
+Hola ${customerName},
+
+Tu pedido *${orderId}* ha sido aprobado y está siendo procesado.
+
+Pronto recibirás tu pedido. ¡Gracias por tu compra! 🎉`;
+    } else {
+      message = `❌ *PEDIDO RECHAZADO*
+
+Hola ${customerName},
+
+Lamentamos informarte que tu pedido *${orderId}* no pudo ser procesado.
+
+Si tienes alguna duda, por favor contáctanos.`;
+    }
+
+    await kapsoClient.sendMessage({
+      to: customerPhone,
+      message: message,
+      phoneNumberId: phoneNumberId,
+    });
+
+    console.log(`Customer notification sent for order ${orderId}: ${status}`);
+  } catch (error) {
+    console.error('Error sending customer notification:', error);
+    throw error;
+  }
+}
+
+/**
+ * Detecta si un mensaje es una respuesta del admin (SI/NO + ID)
+ */
+export function parseAdminResponse(text: string): { action: 'APPROVE' | 'REJECT' | null; orderId: string | null } {
+  const upperText = text.toUpperCase().trim();
+  
+  // Detectar SI ORD123456789
+  const approveMatch = upperText.match(/^SI\s+(ORD\d+)$/);
+  if (approveMatch) {
+    return { action: 'APPROVE', orderId: approveMatch[1] };
+  }
+  
+  // Detectar NO ORD123456789
+  const rejectMatch = upperText.match(/^NO\s+(ORD\d+)$/);
+  if (rejectMatch) {
+    return { action: 'REJECT', orderId: rejectMatch[1] };
+  }
+  
+  return { action: null, orderId: null };
+}
+
+/**
+ * Verifica si un número de teléfono es el administrador
+ */
+export async function isAdminPhone(phoneNumber: string): Promise<boolean> {
+  try {
+    const storeData = await getStoreData();
+    const { admin_telefono } = storeData.config;
+    
+    // Normalizar números (eliminar espacios, guiones, etc.)
+    const normalizedPhone = phoneNumber.replace(/[\s\-\(\)]/g, '');
+    const normalizedAdmin = admin_telefono?.replace(/[\s\-\(\)]/g, '') || '';
+    
+    return normalizedPhone === normalizedAdmin;
+  } catch (error) {
+    console.error('Error checking admin phone:', error);
+    return false;
+  }
+}
+
+// Made with Bob

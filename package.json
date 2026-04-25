@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@ai-sdk/openai": "^3.0.53",
+    "@google-cloud/storage": "^7.19.0",
     "@neondatabase/serverless": "^1.1.0",
     "@openrouter/ai-sdk-provider": "^2.8.0",
     "ai": "^6.0.168",
@@ -17,12 +18,14 @@
     "dotenv": "^17.4.2",
     "googleapis": "^171.4.0",
     "next": "16.2.4",
+    "pdfkit": "^0.18.0",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/pdfkit": "^0.17.6",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",

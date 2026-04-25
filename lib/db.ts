@@ -32,6 +32,19 @@ export interface Cart {
   expires_at: Date;
 }
 
+export interface PendingOrder {
+  id: string;
+  conversation_id: string;
+  phone_number: string;
+  contact_name: string;
+  items: CartItem[];
+  total: number;
+  payment_method: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  created_at: Date;
+  admin_notified: boolean;
+}
+
 /**
  * Initialize database tables
  */
@@ -88,6 +101,22 @@ export async function initDatabase() {
       )
     `;
 
+    // Create pending_orders table
+    await sql`
+      CREATE TABLE IF NOT EXISTS pending_orders (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        phone_number TEXT NOT NULL,
+        contact_name TEXT,
+        items JSONB NOT NULL,
+        total DECIMAL(10,2) NOT NULL,
+        payment_method TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        admin_notified BOOLEAN DEFAULT false
+      )
+    `;
+
     // Create index for faster queries
     await sql`
       CREATE INDEX IF NOT EXISTS idx_conversations_phone
@@ -107,6 +136,11 @@ export async function initDatabase() {
     await sql`
       CREATE INDEX IF NOT EXISTS idx_carts_expires
       ON carts(expires_at)
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_pending_orders_status
+      ON pending_orders(status, created_at)
     `;
 
     console.log('Database initialized successfully');
@@ -438,6 +472,131 @@ export async function cleanExpiredCarts(): Promise<number> {
     return deletedCount;
   } catch (error) {
     console.error('Error cleaning expired carts:', error);
+    throw error;
+  }
+}
+
+/**
+ * Create a pending order for admin approval
+ */
+export async function createPendingOrder(
+  conversationId: string,
+  phoneNumber: string,
+  contactName: string,
+  items: CartItem[],
+  total: number,
+  paymentMethod: string
+): Promise<string> {
+  try {
+    const orderId = `ORD${Date.now()}`;
+    
+    await sql`
+      INSERT INTO pending_orders (id, conversation_id, phone_number, contact_name, items, total, payment_method)
+      VALUES (${orderId}, ${conversationId}, ${phoneNumber}, ${contactName}, ${JSON.stringify(items)}, ${total}, ${paymentMethod})
+    `;
+
+    console.log(`Created pending order ${orderId} for ${phoneNumber}`);
+    return orderId;
+  } catch (error) {
+    console.error('Error creating pending order:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get pending order by ID
+ */
+export async function getPendingOrder(orderId: string): Promise<PendingOrder | null> {
+  try {
+    const result = await sql`
+      SELECT * FROM pending_orders
+      WHERE id = ${orderId}
+    `;
+
+    if (result.length === 0) {
+      return null;
+    }
+
+    return {
+      id: result[0].id,
+      conversation_id: result[0].conversation_id,
+      phone_number: result[0].phone_number,
+      contact_name: result[0].contact_name,
+      items: result[0].items as CartItem[],
+      total: parseFloat(result[0].total),
+      payment_method: result[0].payment_method,
+      status: result[0].status,
+      created_at: result[0].created_at,
+      admin_notified: result[0].admin_notified,
+    };
+  } catch (error) {
+    console.error('Error getting pending order:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update order status
+ */
+export async function updateOrderStatus(
+  orderId: string,
+  status: 'APPROVED' | 'REJECTED'
+): Promise<void> {
+  try {
+    await sql`
+      UPDATE pending_orders
+      SET status = ${status}
+      WHERE id = ${orderId}
+    `;
+
+    console.log(`Updated order ${orderId} status to ${status}`);
+  } catch (error) {
+    console.error('Error updating order status:', error);
+    throw error;
+  }
+}
+
+/**
+ * Mark order as admin notified
+ */
+export async function markOrderAsNotified(orderId: string): Promise<void> {
+  try {
+    await sql`
+      UPDATE pending_orders
+      SET admin_notified = true
+      WHERE id = ${orderId}
+    `;
+  } catch (error) {
+    console.error('Error marking order as notified:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get all pending orders
+ */
+export async function getPendingOrders(): Promise<PendingOrder[]> {
+  try {
+    const result = await sql`
+      SELECT * FROM pending_orders
+      WHERE status = 'PENDING'
+      ORDER BY created_at DESC
+    `;
+
+    return result.map(row => ({
+      id: row.id,
+      conversation_id: row.conversation_id,
+      phone_number: row.phone_number,
+      contact_name: row.contact_name,
+      items: row.items as CartItem[],
+      total: parseFloat(row.total),
+      payment_method: row.payment_method,
+      status: row.status,
+      created_at: row.created_at,
+      admin_notified: row.admin_notified,
+    }));
+  } catch (error) {
+    console.error('Error getting pending orders:', error);
     throw error;
   }
 }
