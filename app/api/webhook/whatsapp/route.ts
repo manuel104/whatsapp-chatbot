@@ -166,7 +166,14 @@ export async function POST(request: NextRequest) {
     
     // Handle store-specific button commands
     if (command === 'ver_productos' || command === 'menu' || command === 'inicio') {
-      const menuText = generateMainMenu(storeData);
+      // Get or create conversation to save the interaction
+      const conversation = await getOrCreateConversation(from, contactName);
+      
+      // Save user action
+      await addMessage(conversation.id, from, 'user', text);
+      
+      // Generate menu with contact name
+      const menuText = generateMainMenu(storeData, conversation.contactName);
       const buttons = getMainMenuButtons(storeData);
       
       await kapsoClient.sendMessage({
@@ -176,11 +183,18 @@ export async function POST(request: NextRequest) {
         buttons: buttons.slice(0, 3) // WhatsApp limit: 3 buttons
       });
       
+      // Save bot response
+      await addMessage(conversation.id, from, 'assistant', menuText);
+      
       return NextResponse.json({ status: 'success', action: 'show_menu' });
     }
     
     if (command === 'ver_carrito') {
       const conversation = await getOrCreateConversation(from, contactName);
+      
+      // Save user action
+      await addMessage(conversation.id, from, 'user', text);
+      
       const cartItems = await getCart(conversation.id);
       const cartText = formatCart(cartItems, storeData);
       const buttons = cartItems.length > 0 ? getCartButtons() : [];
@@ -192,46 +206,75 @@ export async function POST(request: NextRequest) {
         buttons: buttons.slice(0, 3)
       });
       
+      // Save bot response
+      await addMessage(conversation.id, from, 'assistant', cartText);
+      
       return NextResponse.json({ status: 'success', action: 'show_cart' });
     }
     
     if (command === 'vaciar_carrito') {
       const conversation = await getOrCreateConversation(from, contactName);
+      
+      // Save user action
+      await addMessage(conversation.id, from, 'user', text);
+      
       await clearCart(conversation.id);
       
+      const responseText = '🗑️ Carrito vaciado';
       await kapsoClient.sendMessage({
         to: from,
-        message: '🗑️ Carrito vaciado',
+        message: responseText,
         phoneNumberId: phoneNumberId,
       });
+      
+      // Save bot response
+      await addMessage(conversation.id, from, 'assistant', responseText);
       
       return NextResponse.json({ status: 'success', action: 'clear_cart' });
     }
     
     if (command.startsWith('cat_')) {
+      const conversation = await getOrCreateConversation(from, contactName);
+      
+      // Save user action
+      await addMessage(conversation.id, from, 'user', text);
+      
       const category = command.replace('cat_', '');
       const products = await getProductsByCategory(category);
       const productsText = formatProductList(products, storeData);
       
+      const responseText = `📦 *${category.toUpperCase()}*\n\n${productsText}\n\n💡 Para agregar: "agregar P001"`;
       await kapsoClient.sendMessage({
         to: from,
-        message: `📦 *${category.toUpperCase()}*\n\n${productsText}\n\n💡 Para agregar: "agregar P001"`,
+        message: responseText,
         phoneNumberId: phoneNumberId,
       });
+      
+      // Save bot response
+      await addMessage(conversation.id, from, 'assistant', responseText);
       
       return NextResponse.json({ status: 'success', action: 'show_category' });
     }
     
     if (command.startsWith('pago_')) {
+      const conversation = await getOrCreateConversation(from, contactName);
+      
+      // Save user action
+      await addMessage(conversation.id, from, 'user', text);
+      
       const paymentId = command.replace('pago_', '');
       const paymentMethod = storeData.paymentMethods.find(p => p.id === paymentId);
       
       if (paymentMethod) {
+        const responseText = `💳 *${paymentMethod.nombre}*\n\n${paymentMethod.instrucciones}`;
         await kapsoClient.sendMessage({
           to: from,
-          message: `💳 *${paymentMethod.nombre}*\n\n${paymentMethod.instrucciones}`,
+          message: responseText,
           phoneNumberId: phoneNumberId,
         });
+        
+        // Save bot response
+        await addMessage(conversation.id, from, 'assistant', responseText);
       }
       
       return NextResponse.json({ status: 'success', action: 'show_payment' });

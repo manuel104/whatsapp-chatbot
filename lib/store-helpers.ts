@@ -70,9 +70,18 @@ Envío: ${shipping === 0 ? 'GRATIS ✨' : simbolo_moneda + shipping.toLocaleStri
 /**
  * Genera el menú principal con categorías
  */
-export function generateMainMenu(storeData: StoreData): string {
+export function generateMainMenu(storeData: StoreData, contactName?: string): string {
   const { nombre_tienda, horario } = storeData.storeInfo;
-  const { bienvenida, menu_principal } = storeData.messages;
+  let { bienvenida } = storeData.messages;
+  const { menu_principal } = storeData.messages;
+  
+  // Reemplazar {nombre} con el nombre real del contacto
+  if (contactName) {
+    bienvenida = bienvenida.replace('{nombre}', contactName).replace('{NOMBRE}', contactName);
+  } else {
+    // Si no hay nombre, eliminar el placeholder
+    bienvenida = bienvenida.replace('{nombre}', '').replace('{NOMBRE}', '').replace('  ', ' ').trim();
+  }
   
   const categoriesText = storeData.categories
     .map(cat => `${cat.emoji} ${cat.nombre}`)
