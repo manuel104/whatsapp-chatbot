@@ -52,9 +52,6 @@ No hay pedidos pendientes en este momento. ✅`;
         `• ${item.product_name} x${item.quantity} - ${simbolo_moneda}${(item.price * item.quantity).toLocaleString()}`
       ).join('\n');
       
-      // Crear ID corto para los botones (máximo 20 caracteres con "SI ")
-      const shortOrderId = order.id.substring(0, 13);
-      
       const message = `🔔 *PEDIDO PENDIENTE*
 
 📋 ID: *${order.id}*
@@ -72,22 +69,21 @@ ${itemsList}
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
 ⚠️ *ACCIÓN REQUERIDA*
 
-Para aprobar por texto, responde:
+Responde con el ID completo:
 ✅ *SI ${order.id}*
-
-Para rechazar por texto, responde:
 ❌ *NO ${order.id}*
 
-O usa los botones de abajo:
-[SI ${shortOrderId}] [NO ${shortOrderId}]`;
+O presiona los botones:`;
+
+      // Botones con el ID COMPLETO
       const buttons = [
         {
           id: `approve_${order.id}`,
-          title: `SI ${shortOrderId}`
+          title: `SI ${order.id}`
         },
         {
           id: `reject_${order.id}`,
-          title: `NO ${shortOrderId}`
+          title: `NO ${order.id}`
         }
       ];
 

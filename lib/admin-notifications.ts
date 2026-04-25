@@ -64,17 +64,15 @@ O usa los botones de abajo ↓`;
     // Botones interactivos para aprobar/rechazar
     // Nota: Los botones pueden no mostrarse en algunos dispositivos (iPhone)
     // Por eso también incluimos las instrucciones de texto
-    // Limitación: Los títulos de botones tienen máximo 20 caracteres
-    // Formato: "SI ORD123" y "NO ORD123"
-    const shortOrderId = orderId.substring(0, 13); // Acortar para que quepa "SI " o "NO "
+    // Botones con el ID COMPLETO para que coincida con el mensaje
     const buttons = [
       {
         id: `approve_${orderId}`,
-        title: `SI ${shortOrderId}` // Máximo 20 caracteres
+        title: `SI ${orderId}`
       },
       {
         id: `reject_${orderId}`,
-        title: `NO ${shortOrderId}` // Máximo 20 caracteres
+        title: `NO ${orderId}`
       }
     ];
 
