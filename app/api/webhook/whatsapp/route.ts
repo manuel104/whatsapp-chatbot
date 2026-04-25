@@ -34,6 +34,13 @@ import {
   parseAdminResponse,
   isAdminPhone
 } from '@/lib/admin-notifications';
+import {
+  sendPendingOrdersList,
+  parseAdminCommand,
+  sendAdminHelp,
+  generateAdminMenu,
+  getAdminMenuButtons
+} from '@/lib/admin-helpers';
 import { generateAndUploadInvoice } from '@/lib/invoice-generator';
 
 // Store processed message IDs to prevent duplicates (expires after 5 minutes)
@@ -172,9 +179,37 @@ export async function POST(request: NextRequest) {
     // Load store data
     const storeData = await getStoreData();
     
-    // Check if this is an admin response (SI/NO + ORDER_ID)
+    // Check if this is an admin message
     const isAdmin = await isAdminPhone(from);
     if (isAdmin) {
+      console.log('Admin detected:', from);
+      
+      // Check for admin commands first (PEDIDOS, AYUDA, etc.)
+      const adminCommand = parseAdminCommand(text);
+      
+      if (adminCommand.command === 'LIST_PENDING') {
+        await sendPendingOrdersList(from, phoneNumberId);
+        return NextResponse.json({ status: 'success', action: 'list_pending_orders' });
+      }
+      
+      if (adminCommand.command === 'HELP') {
+        await sendAdminHelp(from, phoneNumberId);
+        return NextResponse.json({ status: 'success', action: 'admin_help' });
+      }
+      
+      // Check for admin button presses
+      const command = text.toLowerCase().trim();
+      if (command === 'admin_pedidos') {
+        await sendPendingOrdersList(from, phoneNumberId);
+        return NextResponse.json({ status: 'success', action: 'list_pending_orders' });
+      }
+      
+      if (command === 'admin_ayuda') {
+        await sendAdminHelp(from, phoneNumberId);
+        return NextResponse.json({ status: 'success', action: 'admin_help' });
+      }
+      
+      // Check for admin response (SI/NO + ORDER_ID)
       const adminResponse = parseAdminResponse(text);
       
       if (adminResponse.action && adminResponse.orderId) {
@@ -280,6 +315,20 @@ ${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'
         
         return NextResponse.json({ status: 'success', action: 'order_processed', newStatus, invoiceUrl });
       }
+      
+      // If admin sends any other message (not a command), show admin menu
+      console.log('Admin sent generic message, showing admin menu');
+      const adminMenuText = await generateAdminMenu(contactName);
+      const adminButtons = getAdminMenuButtons();
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: adminMenuText,
+        phoneNumberId: phoneNumberId,
+        buttons: adminButtons
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'show_admin_menu' });
     }
     
     // Check for commands (both / commands and button IDs)

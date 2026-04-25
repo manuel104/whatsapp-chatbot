@@ -9,6 +9,8 @@ import type { PendingOrder } from './db';
 
 /**
  * Envía notificación al administrador sobre un pedido pendiente
+ * IMPORTANTE: Esta función intenta enviar un mensaje directo al admin.
+ * Si falla por la ventana de 24h, el admin debe iniciar conversación primero.
  */
 export async function notifyAdminNewOrder(
   orderId: string,
@@ -30,7 +32,7 @@ export async function notifyAdminNewOrder(
     }
 
     // Formatear lista de productos
-    const itemsList = items.map((item, index) => 
+    const itemsList = items.map((item, index) =>
       `${index + 1}. ${item.product_name} x${item.quantity} - ${simbolo_moneda}${(item.price * item.quantity).toLocaleString()}`
     ).join('\n');
 
@@ -58,16 +60,28 @@ Para rechazar este pedido, responde:
 ⏰ Pedido recibido: ${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}`;
 
     const kapsoClient = getKapsoClient();
-    await kapsoClient.sendMessage({
-      to: admin_telefono,
-      message: message,
-      phoneNumberId: phoneNumberId,
-    });
-
-    console.log(`Admin notification sent for order ${orderId}`);
+    
+    try {
+      // Intentar enviar mensaje directo
+      await kapsoClient.sendMessage({
+        to: admin_telefono,
+        message: message,
+        phoneNumberId: phoneNumberId,
+      });
+      console.log(`✅ Admin notification sent for order ${orderId}`);
+    } catch (error: any) {
+      // Si falla por ventana de 24h, registrar el error pero no fallar
+      if (error.response?.data?.error?.includes('24-hour')) {
+        console.warn(`⚠️ Cannot notify admin (24h window). Order ${orderId} saved in database.`);
+        console.warn(`Admin must check pending orders manually or initiate conversation first.`);
+        // No lanzar error - el pedido ya está guardado en la BD
+      } else {
+        throw error;
+      }
+    }
   } catch (error) {
-    console.error('Error sending admin notification:', error);
-    throw error;
+    console.error('Error in admin notification system:', error);
+    // No lanzar error - el pedido ya está guardado en la BD
   }
 }
 

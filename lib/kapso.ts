@@ -12,11 +12,14 @@ interface SendMessageParams {
   to: string;
   message: string;
   phoneNumberId: string;
-  type?: 'text' | 'image' | 'document' | 'interactive';
+  type?: 'text' | 'image' | 'document' | 'interactive' | 'template';
   buttons?: Array<{
     id: string;
     title: string;
   }>;
+  templateName?: string;
+  templateLanguage?: string;
+  templateComponents?: any[];
 }
 
 class KapsoClient {
@@ -54,14 +57,30 @@ class KapsoClient {
   /**
    * Send a text message via WhatsApp using Kapso's Meta API format
    */
-  async sendMessage({ to, message, phoneNumberId, type = 'text', buttons }: SendMessageParams): Promise<any> {
+  async sendMessage({ to, message, phoneNumberId, type = 'text', buttons, templateName, templateLanguage = 'es', templateComponents }: SendMessageParams): Promise<any> {
     try {
       const endpoint = `/meta/whatsapp/v24.0/${phoneNumberId}/messages`;
       
       let payload: any;
       
+      // Template message (for 24h+ window)
+      if (type === 'template' && templateName) {
+        payload = {
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: to,
+          type: 'template',
+          template: {
+            name: templateName,
+            language: {
+              code: templateLanguage
+            },
+            components: templateComponents || []
+          }
+        };
+      }
       // If buttons are provided, use interactive message type
-      if (buttons && buttons.length > 0) {
+      else if (buttons && buttons.length > 0) {
         payload = {
           messaging_product: 'whatsapp',
           recipient_type: 'individual',
