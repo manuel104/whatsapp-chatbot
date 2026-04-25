@@ -565,9 +565,10 @@ ${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'
             paymentMethod.nombre
           );
           
-          // Record pending sale in Google Sheets
+          // Record pending sale in Google Sheets with the orderId
           const productsString = cartItems.map(item => `${item.product_id}x${item.quantity}`).join(',');
           await recordSale({
+            id_venta: orderId, // ← Use orderId as sale ID
             fecha: new Date().toISOString(),
             cliente_tel: from,
             cliente_nombre: conversation.contactName || 'Cliente',
@@ -577,7 +578,7 @@ ${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'
             factura_url: '', // Will be added when approved
           });
           
-          console.log(`Pending sale recorded in Google Sheets: ${orderId}`);
+          console.log(`Pending sale recorded in Google Sheets with ID: ${orderId}`);
           
           // Notify admin
           await notifyAdminNewOrder(

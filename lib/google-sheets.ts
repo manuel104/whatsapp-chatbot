@@ -301,13 +301,14 @@ export async function getCategories(): Promise<Category[]> {
 
 /**
  * Registra una venta en Google Sheets
+ * Si se proporciona id_venta, lo usa; si no, genera uno nuevo
  */
-export async function recordSale(sale: Omit<Sale, 'id_venta'>): Promise<string> {
+export async function recordSale(sale: Omit<Sale, 'id_venta'> & { id_venta?: string }): Promise<string> {
   try {
     const sheets = getGoogleSheetsClient();
     
-    // Generar ID de venta
-    const saleId = `V${Date.now()}`;
+    // Usar el ID proporcionado o generar uno nuevo
+    const saleId = sale.id_venta || `V${Date.now()}`;
     
     // Preparar fila
     const row = [
@@ -331,7 +332,7 @@ export async function recordSale(sale: Omit<Sale, 'id_venta'>): Promise<string> 
       },
     });
 
-    console.log(`Sale recorded: ${saleId}`);
+    console.log(`Sale recorded in Google Sheets: ${saleId}`);
     return saleId;
   } catch (error) {
     console.error('Error recording sale:', error);

@@ -48,17 +48,32 @@ ${itemsList}
 
 💰 *Total:* ${simbolo_moneda}${total.toLocaleString()}
 
-⏰ Pedido recibido: ${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}`;
+⏰ Pedido recibido: ${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━
+⚠️ *ACCIÓN REQUERIDA*
+
+Para aprobar, responde:
+✅ *SI ${orderId}*
+
+Para rechazar, responde:
+❌ *NO ${orderId}*
+
+O usa los botones de abajo ↓`;
 
     // Botones interactivos para aprobar/rechazar
+    // Nota: Los botones pueden no mostrarse en algunos dispositivos (iPhone)
+    // Por eso también incluimos las instrucciones de texto
+    // Limitación: Los títulos de botones tienen máximo 20 caracteres
+    const shortOrderId = orderId.substring(0, 10); // Acortar para que quepa en el botón
     const buttons = [
       {
         id: `approve_${orderId}`,
-        title: `✅ Aprobar`
+        title: `✅ ${shortOrderId}` // Máximo 20 caracteres
       },
       {
         id: `reject_${orderId}`,
-        title: `❌ Rechazar`
+        title: `❌ ${shortOrderId}` // Máximo 20 caracteres
       }
     ];
 
