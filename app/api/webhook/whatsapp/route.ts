@@ -6,8 +6,24 @@ import {
   startNewConversation,
   addMessage,
   getConversationHistory,
-  initDatabase
+  initDatabase,
+  getCart,
+  addToCart,
+  clearCart,
+  getCartTotal
 } from '@/lib/db';
+import { getStoreData, searchProducts, getProductsByCategory } from '@/lib/google-sheets';
+import {
+  detectIntent,
+  generateMainMenu,
+  formatProductList,
+  formatCart,
+  processAddToCart,
+  getMainMenuButtons,
+  getCategoryButtons,
+  getCartButtons,
+  getPaymentButtons
+} from '@/lib/store-helpers';
 
 // Store processed message IDs to prevent duplicates (expires after 5 minutes)
 const processedMessages = new Map<string, number>();
@@ -142,8 +158,84 @@ export async function POST(request: NextRequest) {
       dbInitialized = true;
     }
 
+    // Load store data
+    const storeData = await getStoreData();
+    
     // Check for commands (both / commands and button IDs)
     const command = text.toLowerCase().trim();
+    
+    // Handle store-specific button commands
+    if (command === 'ver_productos' || command === 'menu' || command === 'inicio') {
+      const menuText = generateMainMenu(storeData);
+      const buttons = getMainMenuButtons(storeData);
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: menuText,
+        phoneNumberId: phoneNumberId,
+        buttons: buttons.slice(0, 3) // WhatsApp limit: 3 buttons
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'show_menu' });
+    }
+    
+    if (command === 'ver_carrito') {
+      const conversation = await getOrCreateConversation(from, contactName);
+      const cartItems = await getCart(conversation.id);
+      const cartText = formatCart(cartItems, storeData);
+      const buttons = cartItems.length > 0 ? getCartButtons() : [];
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: cartText,
+        phoneNumberId: phoneNumberId,
+        buttons: buttons.slice(0, 3)
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'show_cart' });
+    }
+    
+    if (command === 'vaciar_carrito') {
+      const conversation = await getOrCreateConversation(from, contactName);
+      await clearCart(conversation.id);
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: '🗑️ Carrito vaciado',
+        phoneNumberId: phoneNumberId,
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'clear_cart' });
+    }
+    
+    if (command.startsWith('cat_')) {
+      const category = command.replace('cat_', '');
+      const products = await getProductsByCategory(category);
+      const productsText = formatProductList(products, storeData);
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: `📦 *${category.toUpperCase()}*\n\n${productsText}\n\n💡 Para agregar: "agregar P001"`,
+        phoneNumberId: phoneNumberId,
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'show_category' });
+    }
+    
+    if (command.startsWith('pago_')) {
+      const paymentId = command.replace('pago_', '');
+      const paymentMethod = storeData.paymentMethods.find(p => p.id === paymentId);
+      
+      if (paymentMethod) {
+        await kapsoClient.sendMessage({
+          to: from,
+          message: `💳 *${paymentMethod.nombre}*\n\n${paymentMethod.instrucciones}`,
+          phoneNumberId: phoneNumberId,
+        });
+      }
+      
+      return NextResponse.json({ status: 'success', action: 'show_payment' });
+    }
     
     if (text.startsWith('/') || command === 'nueva_conversacion' || command === 'ver_ayuda') {
       
@@ -164,16 +256,20 @@ export async function POST(request: NextRequest) {
       }
       
       if (command === '/ayuda' || command === '/help' || command === 'ver_ayuda') {
-        // Show help - WITH Nueva conversación button
+        // Show help - WITH buttons
         const response = `🤖 *Comandos disponibles:*
 
-/nueva - Iniciar nueva conversación
-/ayuda - Mostrar esta ayuda
+📱 *Tienda:*
+• Ver productos
+• Ver carrito
+• Buscar [producto]
+• Agregar [código]
 
-💬 Simplemente escribe tu mensaje para chatear conmigo.`;
+💬 *General:*
+• /nueva - Nueva conversación
+• /ayuda - Esta ayuda`;
         
-        console.log('Sending help message with button');
-        console.log('Response length:', response.length);
+        console.log('Sending help message with buttons');
         
         try {
           await kapsoClient.sendMessage({
@@ -181,13 +277,15 @@ export async function POST(request: NextRequest) {
             message: response,
             phoneNumberId: phoneNumberId,
             buttons: [
-              { id: 'nueva_conversacion', title: 'Nueva' }
+              { id: 'ver_productos', title: '🛍️ Productos' },
+              { id: 'ver_carrito', title: '🛒 Carrito' },
+              { id: 'nueva_conversacion', title: '✨ Nueva' }
             ]
           });
-          console.log('Help message sent successfully with button');
+          console.log('Help message sent successfully with buttons');
         } catch (error) {
-          console.error('Error sending help message with button:', error);
-          // Fallback: send without button
+          console.error('Error sending help message with buttons:', error);
+          // Fallback: send without buttons
           await kapsoClient.sendMessage({
             to: from,
             message: response,
@@ -208,6 +306,113 @@ export async function POST(request: NextRequest) {
     
     console.log(`Using conversation ${conversationId} for ${from} (new: ${isNewConversation}, wasInactive: ${wasInactive}, name: ${savedContactName})`);
 
+    // Detect user intent
+    const intent = detectIntent(text);
+    console.log('Detected intent:', intent.intent);
+    
+    // Handle specific intents
+    if (intent.intent === 'menu') {
+      const menuText = generateMainMenu(storeData);
+      const buttons = getMainMenuButtons(storeData);
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: menuText,
+        phoneNumberId: phoneNumberId,
+        buttons: buttons.slice(0, 3)
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'show_menu' });
+    }
+    
+    if (intent.intent === 'view_cart') {
+      const cartItems = await getCart(conversationId);
+      const cartText = formatCart(cartItems, storeData);
+      const buttons = cartItems.length > 0 ? getCartButtons() : [];
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: cartText,
+        phoneNumberId: phoneNumberId,
+        buttons: buttons.slice(0, 3)
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'show_cart' });
+    }
+    
+    if (intent.intent === 'add_to_cart') {
+      await kapsoClient.sendTypingIndicator(from, phoneNumberId);
+      
+      const result = await processAddToCart(text, conversationId, from);
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: result.message,
+        phoneNumberId: phoneNumberId,
+        buttons: result.success ? [
+          { id: 'ver_carrito', title: '🛒 Ver carrito' },
+          { id: 'seguir_comprando', title: '🛍️ Seguir' }
+        ] : undefined
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'add_to_cart' });
+    }
+    
+    if (intent.intent === 'search' && intent.data?.query) {
+      await kapsoClient.sendTypingIndicator(from, phoneNumberId);
+      
+      const products = await searchProducts(intent.data.query);
+      const productsText = formatProductList(products, storeData);
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: `🔍 *Resultados para "${intent.data.query}"*\n\n${productsText}\n\n💡 Para agregar: "agregar P001"`,
+        phoneNumberId: phoneNumberId,
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'search' });
+    }
+    
+    if (intent.intent === 'category' && intent.data?.category) {
+      await kapsoClient.sendTypingIndicator(from, phoneNumberId);
+      
+      const products = await getProductsByCategory(intent.data.category);
+      const productsText = formatProductList(products, storeData);
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: `📦 *${intent.data.category.toUpperCase()}*\n\n${productsText}\n\n💡 Para agregar: "agregar P001"`,
+        phoneNumberId: phoneNumberId,
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'show_category' });
+    }
+    
+    if (intent.intent === 'checkout') {
+      const cartItems = await getCart(conversationId);
+      
+      if (cartItems.length === 0) {
+        await kapsoClient.sendMessage({
+          to: from,
+          message: storeData.messages.carrito_vacio,
+          phoneNumberId: phoneNumberId,
+        });
+        return NextResponse.json({ status: 'success', action: 'empty_cart' });
+      }
+      
+      const cartText = formatCart(cartItems, storeData);
+      const buttons = getPaymentButtons(storeData);
+      
+      await kapsoClient.sendMessage({
+        to: from,
+        message: `${cartText}\n\n${storeData.messages.selecciona_pago}`,
+        phoneNumberId: phoneNumberId,
+        buttons: buttons.slice(0, 3)
+      });
+      
+      return NextResponse.json({ status: 'success', action: 'checkout' });
+    }
+
     // Send typing indicator to show the bot is processing
     await kapsoClient.sendTypingIndicator(from, phoneNumberId);
     console.log('Typing indicator sent');
@@ -215,33 +420,51 @@ export async function POST(request: NextRequest) {
     // Get conversation history from database (last 10 messages)
     const history = await getConversationHistory(conversationId, 10);
 
+    // Build enhanced system message with store context
+    let systemMessage = `Eres un asistente de ventas para ${storeData.storeInfo.nombre_tienda}.
+
+INFORMACIÓN DE LA TIENDA:
+- Horario: ${storeData.storeInfo.horario}
+- Envío gratis desde: ${storeData.storeInfo.simbolo_moneda}${storeData.storeInfo.envio_gratis_min.toLocaleString()}
+- Tiempo de entrega: ${storeData.storeInfo.tiempo_entrega}
+
+PRODUCTOS DISPONIBLES:
+${storeData.products.slice(0, 10).map(p => `- ${p.nombre} (${p.id}): ${storeData.storeInfo.simbolo_moneda}${p.precio.toLocaleString()}`).join('\n')}
+
+INSTRUCCIONES:
+- Ayuda al cliente a encontrar productos
+- Responde preguntas sobre la tienda
+- Sé amigable, profesional y conciso
+- Si el cliente busca un producto, sugiere opciones relevantes
+- Para agregar al carrito, el cliente debe escribir "agregar [código]"
+`;
+
     // Add greeting for new conversations or reactivated sessions
-    let systemMessage = '';
     if (isNewConversation) {
       if (wasInactive) {
         // Session reactivated after inactivity
-        systemMessage = savedContactName
-          ? `La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. El nombre del usuario es "${savedContactName}". IMPORTANTE: Agradece brevemente al usuario por volver a contactar usando su nombre, y luego responde directamente a su pregunta de forma amigable y profesional. NO des un saludo largo, ve directo al punto.`
-          : 'La sesión anterior expiró por inactividad (más de 10 minutos). Esta es una nueva conversación. IMPORTANTE: Agradece brevemente al usuario por volver a contactar y luego responde directamente a su pregunta de forma amigable y profesional. NO des un saludo largo, ve directo al punto.';
+        systemMessage += savedContactName
+          ? `\n\nLa sesión anterior expiró. Esta es una nueva conversación. El nombre del usuario es "${savedContactName}". Agradece brevemente por volver y responde su pregunta.`
+          : '\n\nLa sesión anterior expiró. Esta es una nueva conversación. Agradece brevemente por volver y responde su pregunta.';
       } else {
         // Brand new conversation - first message from user
-        systemMessage = savedContactName
-          ? `Esta es una nueva conversación. El nombre del usuario es "${savedContactName}". IMPORTANTE: Saluda brevemente al usuario usando su nombre, preséntate como un asistente útil, y luego responde directamente a su pregunta. Sé amigable pero conciso en el saludo.`
-          : 'Esta es una nueva conversación. IMPORTANTE: Saluda brevemente al usuario, preséntate como un asistente útil, y luego responde directamente a su pregunta. Sé amigable pero conciso en el saludo.';
+        systemMessage += savedContactName
+          ? `\n\nEsta es una nueva conversación. El nombre del usuario es "${savedContactName}". Saluda brevemente usando su nombre y responde su pregunta.`
+          : '\n\nEsta es una nueva conversación. Saluda brevemente y responde su pregunta.';
       }
     } else if (savedContactName) {
       // Ongoing conversation - NO greeting, just use name naturally
-      systemMessage = `El nombre del usuario es "${savedContactName}". NO saludes de nuevo. Simplemente responde a su pregunta de forma amigable y profesional, usando su nombre naturalmente cuando sea apropiado (por ejemplo: "Claro ${savedContactName}, con gusto te ayudo con eso...").`;
+      systemMessage += `\n\nEl nombre del usuario es "${savedContactName}". NO saludes de nuevo. Responde usando su nombre naturalmente cuando sea apropiado.`;
     } else {
       // Ongoing conversation without name
-      systemMessage = 'Conversación en curso. NO saludes de nuevo. Simplemente responde a la pregunta del usuario de forma amigable y profesional.';
+      systemMessage += '\n\nConversación en curso. NO saludes de nuevo. Responde directamente.';
     }
 
     // Generate AI response
     let aiResponse = await generateAIResponse({
       message: text,
       conversationHistory: history,
-      systemPrompt: systemMessage || 'Eres un asistente útil de WhatsApp. Responde de manera amigable, concisa y profesional en español.',
+      systemPrompt: systemMessage,
     });
 
     // Save user message and AI response to database

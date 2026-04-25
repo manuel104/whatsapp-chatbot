@@ -64,3 +64,6 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+
+# sheets
+google-credentials.json

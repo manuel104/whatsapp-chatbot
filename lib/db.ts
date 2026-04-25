@@ -1,4 +1,5 @@
 import { neon } from '@neondatabase/serverless';
+import type { CartItem } from '@/types/store';
 
 // Initialize Neon client
 const sql = neon(process.env.DATABASE_URL || '');
@@ -19,6 +20,16 @@ export interface Conversation {
   started_at: Date;
   last_message_at: Date;
   message_count: number;
+}
+
+export interface Cart {
+  id: number;
+  conversation_id: string;
+  phone_number: string;
+  items: CartItem[];
+  created_at: Date;
+  updated_at: Date;
+  expires_at: Date;
 }
 
 /**
@@ -63,6 +74,20 @@ export async function initDatabase() {
       )
     `;
 
+    // Create carts table
+    await sql`
+      CREATE TABLE IF NOT EXISTS carts (
+        id SERIAL PRIMARY KEY,
+        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+        phone_number TEXT NOT NULL,
+        items JSONB NOT NULL DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NOT NULL,
+        UNIQUE(conversation_id)
+      )
+    `;
+
     // Create index for faster queries
     await sql`
       CREATE INDEX IF NOT EXISTS idx_conversations_phone
@@ -72,6 +97,16 @@ export async function initDatabase() {
     await sql`
       CREATE INDEX IF NOT EXISTS idx_messages_conversation
       ON messages(conversation_id, created_at)
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_carts_conversation
+      ON carts(conversation_id)
+    `;
+
+    await sql`
+      CREATE INDEX IF NOT EXISTS idx_carts_expires
+      ON carts(expires_at)
     `;
 
     console.log('Database initialized successfully');
@@ -231,6 +266,178 @@ export async function getConversationHistory(
     }));
   } catch (error) {
     console.error('Error getting conversation history:', error);
+    throw error;
+  }
+}
+
+
+/**
+ * Get cart for a conversation
+ */
+export async function getCart(conversationId: string): Promise<CartItem[]> {
+  try {
+    const result = await sql`
+      SELECT items FROM carts
+      WHERE conversation_id = ${conversationId}
+      AND expires_at > CURRENT_TIMESTAMP
+    `;
+
+    if (result.length === 0) {
+      return [];
+    }
+
+    return result[0].items as CartItem[];
+  } catch (error) {
+    console.error('Error getting cart:', error);
+    throw error;
+  }
+}
+
+/**
+ * Add item to cart
+ */
+export async function addToCart(
+  conversationId: string,
+  phoneNumber: string,
+  item: CartItem,
+  expirationMinutes: number = 30
+): Promise<void> {
+  try {
+    // Get current cart
+    const currentItems = await getCart(conversationId);
+    
+    // Check if item already exists
+    const existingItemIndex = currentItems.findIndex(i => i.product_id === item.product_id);
+    
+    let updatedItems: CartItem[];
+    if (existingItemIndex >= 0) {
+      // Update quantity
+      updatedItems = [...currentItems];
+      updatedItems[existingItemIndex].quantity += item.quantity;
+    } else {
+      // Add new item
+      updatedItems = [...currentItems, item];
+    }
+
+    const expiresAt = new Date(Date.now() + expirationMinutes * 60 * 1000);
+
+    // Upsert cart
+    await sql`
+      INSERT INTO carts (conversation_id, phone_number, items, expires_at)
+      VALUES (${conversationId}, ${phoneNumber}, ${JSON.stringify(updatedItems)}, ${expiresAt})
+      ON CONFLICT (conversation_id)
+      DO UPDATE SET
+        items = ${JSON.stringify(updatedItems)},
+        updated_at = CURRENT_TIMESTAMP,
+        expires_at = ${expiresAt}
+    `;
+
+    console.log(`Added ${item.quantity}x ${item.product_name} to cart for ${conversationId}`);
+  } catch (error) {
+    console.error('Error adding to cart:', error);
+    throw error;
+  }
+}
+
+/**
+ * Update item quantity in cart
+ */
+export async function updateCartItemQuantity(
+  conversationId: string,
+  productId: string,
+  quantity: number
+): Promise<void> {
+  try {
+    const currentItems = await getCart(conversationId);
+    
+    let updatedItems: CartItem[];
+    if (quantity <= 0) {
+      // Remove item
+      updatedItems = currentItems.filter(i => i.product_id !== productId);
+    } else {
+      // Update quantity
+      updatedItems = currentItems.map(i =>
+        i.product_id === productId ? { ...i, quantity } : i
+      );
+    }
+
+    await sql`
+      UPDATE carts
+      SET items = ${JSON.stringify(updatedItems)},
+          updated_at = CURRENT_TIMESTAMP
+      WHERE conversation_id = ${conversationId}
+    `;
+
+    console.log(`Updated cart item ${productId} quantity to ${quantity}`);
+  } catch (error) {
+    console.error('Error updating cart item:', error);
+    throw error;
+  }
+}
+
+/**
+ * Remove item from cart
+ */
+export async function removeFromCart(
+  conversationId: string,
+  productId: string
+): Promise<void> {
+  try {
+    await updateCartItemQuantity(conversationId, productId, 0);
+  } catch (error) {
+    console.error('Error removing from cart:', error);
+    throw error;
+  }
+}
+
+/**
+ * Clear cart
+ */
+export async function clearCart(conversationId: string): Promise<void> {
+  try {
+    await sql`
+      DELETE FROM carts
+      WHERE conversation_id = ${conversationId}
+    `;
+
+    console.log(`Cleared cart for ${conversationId}`);
+  } catch (error) {
+    console.error('Error clearing cart:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get cart total
+ */
+export async function getCartTotal(conversationId: string): Promise<number> {
+  try {
+    const items = await getCart(conversationId);
+    return items.reduce((total, item) => total + (item.price * item.quantity), 0);
+  } catch (error) {
+    console.error('Error calculating cart total:', error);
+    throw error;
+  }
+}
+
+/**
+ * Clean expired carts (run periodically)
+ */
+export async function cleanExpiredCarts(): Promise<number> {
+  try {
+    const result = await sql`
+      DELETE FROM carts
+      WHERE expires_at < CURRENT_TIMESTAMP
+    `;
+
+    const deletedCount = result.length;
+    if (deletedCount > 0) {
+      console.log(`Cleaned ${deletedCount} expired carts`);
+    }
+    
+    return deletedCount;
+  } catch (error) {
+    console.error('Error cleaning expired carts:', error);
     throw error;
   }
 }
