@@ -70,15 +70,16 @@ Para rechazar, responde:
 O usa los botones de abajo ↓`;
 
       // Crear botones para este pedido específico
-      const shortOrderId = order.id.substring(0, 10);
+      // Formato: "SI ORD123" y "NO ORD123" (máximo 20 caracteres)
+      const shortOrderId = order.id.substring(0, 13); // Dejar espacio para "SI "
       const buttons = [
         {
           id: `approve_${order.id}`,
-          title: `✅ ${shortOrderId}`
+          title: `SI ${shortOrderId}`
         },
         {
           id: `reject_${order.id}`,
-          title: `❌ ${shortOrderId}`
+          title: `NO ${shortOrderId}`
         }
       ];
 

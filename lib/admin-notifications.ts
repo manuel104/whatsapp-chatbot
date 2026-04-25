@@ -65,15 +65,16 @@ O usa los botones de abajo ↓`;
     // Nota: Los botones pueden no mostrarse en algunos dispositivos (iPhone)
     // Por eso también incluimos las instrucciones de texto
     // Limitación: Los títulos de botones tienen máximo 20 caracteres
-    const shortOrderId = orderId.substring(0, 10); // Acortar para que quepa en el botón
+    // Formato: "SI ORD123" y "NO ORD123"
+    const shortOrderId = orderId.substring(0, 13); // Acortar para que quepa "SI " o "NO "
     const buttons = [
       {
         id: `approve_${orderId}`,
-        title: `✅ ${shortOrderId}` // Máximo 20 caracteres
+        title: `SI ${shortOrderId}` // Máximo 20 caracteres
       },
       {
         id: `reject_${orderId}`,
-        title: `❌ ${shortOrderId}` // Máximo 20 caracteres
+        title: `NO ${shortOrderId}` // Máximo 20 caracteres
       }
     ];
 
