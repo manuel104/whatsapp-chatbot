@@ -274,14 +274,20 @@ export async function POST(request: NextRequest) {
           }
         }
         
-        // Confirm to admin
+        // Confirm to admin with SI/NO + ORDER_ID format
         const confirmMessage = newStatus === 'APPROVED'
-          ? `✅ Pedido ${orderId} APROBADO
+          ? `✅ SI ${orderId}
+
+Pedido APROBADO
 
 El cliente ha sido notificado.
 La venta fue registrada.
-${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'}`
-          : `❌ Pedido ${orderId} RECHAZADO\n\nEl cliente ha sido notificado.`;
+${invoiceUrl ? `Factura generada y enviada.` : 'Factura enviada al cliente.'}`
+          : `❌ NO ${orderId}
+
+Pedido RECHAZADO
+
+El cliente ha sido notificado.`;
         
         await kapsoClient.sendMessage({
           to: from,
@@ -364,14 +370,20 @@ ${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'
           invoiceUrl || undefined
         );
         
-        // Confirm to admin
+        // Confirm to admin with SI/NO + ORDER_ID format
         const confirmMessage = newStatus === 'APPROVED'
-          ? `✅ Pedido ${adminResponse.orderId} APROBADO
+          ? `✅ SI ${adminResponse.orderId}
+
+Pedido APROBADO
 
 El cliente ha sido notificado.
 La venta fue registrada.
-${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'}`
-          : `❌ Pedido ${adminResponse.orderId} RECHAZADO\n\nEl cliente ha sido notificado.`;
+${invoiceUrl ? `Factura generada y enviada.` : 'Factura enviada al cliente.'}`
+          : `❌ NO ${adminResponse.orderId}
+
+Pedido RECHAZADO
+
+El cliente ha sido notificado.`;
         
         await kapsoClient.sendMessage({
           to: from,
