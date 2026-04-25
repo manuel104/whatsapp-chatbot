@@ -68,28 +68,27 @@ Envío: ${shipping === 0 ? 'GRATIS ✨' : simbolo_moneda + shipping.toLocaleStri
 }
 
 /**
- * Genera el menú principal con categorías
+ * Genera el menú principal con categorías (SIN saludo)
  */
-export function generateMainMenu(storeData: StoreData, contactName?: string): string {
+export function generateMainMenu(storeData: StoreData, contactName?: string, includeGreeting: boolean = false): string {
   const { nombre_tienda, horario } = storeData.storeInfo;
-  let { bienvenida } = storeData.messages;
   const { menu_principal } = storeData.messages;
-  
-  // Reemplazar {nombre} con el nombre real del contacto
-  if (contactName) {
-    bienvenida = bienvenida.replace('{nombre}', contactName).replace('{NOMBRE}', contactName);
-  } else {
-    // Si no hay nombre, eliminar el placeholder
-    bienvenida = bienvenida.replace('{nombre}', '').replace('{NOMBRE}', '').replace('  ', ' ').trim();
-  }
   
   const categoriesText = storeData.categories
     .map(cat => `${cat.emoji} ${cat.nombre}`)
     .join('\n');
 
-  return `${bienvenida}
+  // Si includeGreeting es true, agregar saludo personalizado
+  let greeting = '';
+  if (includeGreeting) {
+    if (contactName) {
+      greeting = `¡Hola ${contactName}! 👋 Bienvenido a nuestra tienda.\n\n`;
+    } else {
+      greeting = `¡Hola! 👋 Bienvenido a nuestra tienda.\n\n`;
+    }
+  }
 
-🏪 *${nombre_tienda}*
+  return `${greeting}🏪 *${nombre_tienda}*
 🕐 ${horario}
 
 ${menu_principal}

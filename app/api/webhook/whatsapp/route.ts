@@ -172,8 +172,9 @@ export async function POST(request: NextRequest) {
       // Save user action
       await addMessage(conversation.id, from, 'user', text);
       
-      // Generate menu with contact name
-      const menuText = generateMainMenu(storeData, conversation.contactName);
+      // Generate menu WITHOUT greeting (includeGreeting = false)
+      // Only include greeting if it's a new conversation
+      const menuText = generateMainMenu(storeData, conversation.contactName, conversation.isNew);
       const buttons = getMainMenuButtons(storeData);
       
       await kapsoClient.sendMessage({
