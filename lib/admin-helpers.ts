@@ -16,6 +16,13 @@ export async function sendPendingOrdersList(
 ): Promise<void> {
   try {
     const pendingOrders = await getPendingOrders();
+    console.log(`[sendPendingOrdersList] Found ${pendingOrders.length} pending orders`);
+    
+    // Log de los IDs de pedidos pendientes
+    if (pendingOrders.length > 0) {
+      console.log('[sendPendingOrdersList] Pending order IDs:', pendingOrders.map(o => o.id).join(', '));
+    }
+    
     const storeData = await getStoreData();
     const { simbolo_moneda } = storeData.storeInfo;
 
@@ -37,6 +44,7 @@ No hay pedidos pendientes en este momento. ✅`;
 
     // Enviar cada pedido con sus propios botones
     for (const order of pendingOrders) {
+      console.log(`[sendPendingOrdersList] Processing order ${order.id} with status ${order.status}`);
       const itemsCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
       
       // Detalles de productos
@@ -83,6 +91,9 @@ O usa los botones de abajo ↓`;
         }
       ];
 
+      console.log(`[sendPendingOrdersList] Sending order ${order.id} with buttons:`,
+        buttons.map(b => `${b.title} (id: ${b.id})`).join(', '));
+
       // Enviar mensaje con botones
       await kapsoClient.sendMessage({
         to: adminPhone,
@@ -92,7 +103,7 @@ O usa los botones de abajo ↓`;
       });
     }
 
-    console.log(`Pending orders list sent to admin: ${pendingOrders.length} orders`);
+    console.log(`[sendPendingOrdersList] ✅ Sent ${pendingOrders.length} pending orders to admin`);
   } catch (error) {
     console.error('Error sending pending orders list:', error);
     throw error;
