@@ -16,7 +16,7 @@ import {
   updateOrderStatus,
   markOrderAsNotified
 } from '@/lib/db';
-import { getStoreData, searchProducts, getProductsByCategory, recordSale } from '@/lib/google-sheets';
+import { getStoreData, searchProducts, getProductsByCategory, recordSale, updateSaleStatus } from '@/lib/google-sheets';
 import {
   detectIntent,
   generateMainMenu,
@@ -247,7 +247,7 @@ export async function POST(request: NextRequest) {
           phoneNumberId
         );
         
-        // If approved, generate invoice and record sale
+        // If approved, generate invoice and update sale
         let invoiceUrl = '';
         if (newStatus === 'APPROVED') {
           try {
@@ -263,17 +263,9 @@ export async function POST(request: NextRequest) {
             );
             console.log('Invoice generated:', invoiceUrl);
             
-            // Record sale in Google Sheets with invoice URL
-            const productsString = order.items.map(item => `${item.product_id}x${item.quantity}`).join(',');
-            await recordSale({
-              fecha: new Date().toISOString(),
-              cliente_tel: order.phone_number,
-              cliente_nombre: order.contact_name,
-              productos: productsString,
-              total: order.total,
-              estado: 'COMPLETADA',
-              factura_url: invoiceUrl,
-            });
+            // Update sale status in Google Sheets to COMPLETADA with invoice URL
+            await updateSaleStatus(adminResponse.orderId, 'COMPLETADA', invoiceUrl);
+            console.log(`Sale ${adminResponse.orderId} updated to COMPLETADA in Google Sheets`);
             
             // Send invoice to customer
             const invoiceMessage = `📄 *FACTURA*
@@ -295,6 +287,14 @@ ${invoiceUrl}
           } catch (error) {
             console.error('Error generating/sending invoice:', error);
             // Continue even if invoice fails
+          }
+        } else {
+          // If rejected, update sale status in Google Sheets
+          try {
+            await updateSaleStatus(adminResponse.orderId, 'RECHAZADA');
+            console.log(`Sale ${adminResponse.orderId} updated to RECHAZADA in Google Sheets`);
+          } catch (error) {
+            console.error('Error updating rejected sale status:', error);
           }
         }
         
@@ -445,7 +445,7 @@ ${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'
         const requiresConfirmation = ['nequi', 'bancolombia', 'efectivo'].includes(paymentId.toLowerCase());
         
         if (requiresConfirmation && cartItems.length > 0) {
-          // Create pending order
+          // Create pending order in database
           const orderId = await createPendingOrder(
             conversation.id,
             from,
@@ -454,6 +454,20 @@ ${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'
             total,
             paymentMethod.nombre
           );
+          
+          // Record pending sale in Google Sheets
+          const productsString = cartItems.map(item => `${item.product_id}x${item.quantity}`).join(',');
+          await recordSale({
+            fecha: new Date().toISOString(),
+            cliente_tel: from,
+            cliente_nombre: conversation.contactName || 'Cliente',
+            productos: productsString,
+            total: total,
+            estado: 'PENDIENTE',
+            factura_url: '', // Will be added when approved
+          });
+          
+          console.log(`Pending sale recorded in Google Sheets: ${orderId}`);
           
           // Notify admin
           await notifyAdminNewOrder(

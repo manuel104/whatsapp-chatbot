@@ -340,6 +340,63 @@ export async function recordSale(sale: Omit<Sale, 'id_venta'>): Promise<string> 
 }
 
 /**
+ * Actualiza el estado de una venta en Google Sheets
+ */
+export async function updateSaleStatus(
+  saleId: string,
+  newStatus: 'PENDIENTE' | 'COMPLETADA' | 'RECHAZADA',
+  facturaUrl?: string
+): Promise<void> {
+  try {
+    const sheets = getGoogleSheetsClient();
+    
+    // Leer todas las ventas para encontrar la fila
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'VENTAS!A:H',
+    });
+    
+    const rows = response.data.values || [];
+    
+    // Encontrar la fila con el ID de venta (columna A)
+    const rowIndex = rows.findIndex(row => row[0] === saleId);
+    
+    if (rowIndex === -1) {
+      console.warn(`Sale ${saleId} not found in Google Sheets`);
+      return;
+    }
+    
+    // Actualizar estado (columna G) y factura_url (columna H) si se proporciona
+    const updates: any[] = [
+      {
+        range: `VENTAS!G${rowIndex + 1}`,
+        values: [[newStatus]],
+      },
+    ];
+    
+    if (facturaUrl) {
+      updates.push({
+        range: `VENTAS!H${rowIndex + 1}`,
+        values: [[facturaUrl]],
+      });
+    }
+    
+    await sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        valueInputOption: 'USER_ENTERED',
+        data: updates,
+      },
+    });
+    
+    console.log(`Sale ${saleId} updated to ${newStatus}`);
+  } catch (error) {
+    console.error('Error updating sale status:', error);
+    throw error;
+  }
+}
+
+/**
  * Limpia el caché manualmente
  */
 export function clearCache(): void {
