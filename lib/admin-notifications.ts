@@ -48,27 +48,31 @@ ${itemsList}
 
 💰 *Total:* ${simbolo_moneda}${total.toLocaleString()}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━
-⚠️ *ACCIÓN REQUERIDA*
-
-Para aprobar este pedido, responde:
-✅ *SI ${orderId}*
-
-Para rechazar este pedido, responde:
-❌ *NO ${orderId}*
-
 ⏰ Pedido recibido: ${new Date().toLocaleString('es-CO', { timeZone: 'America/Bogota' })}`;
+
+    // Botones interactivos para aprobar/rechazar
+    const buttons = [
+      {
+        id: `approve_${orderId}`,
+        title: `✅ Aprobar`
+      },
+      {
+        id: `reject_${orderId}`,
+        title: `❌ Rechazar`
+      }
+    ];
 
     const kapsoClient = getKapsoClient();
     
     try {
-      // Intentar enviar mensaje directo
+      // Intentar enviar mensaje directo con botones
       await kapsoClient.sendMessage({
         to: admin_telefono,
         message: message,
         phoneNumberId: phoneNumberId,
+        buttons: buttons,
       });
-      console.log(`✅ Admin notification sent for order ${orderId}`);
+      console.log(`✅ Admin notification sent for order ${orderId} with interactive buttons`);
     } catch (error: any) {
       // Si falla por ventana de 24h, registrar el error pero no fallar
       if (error.response?.data?.error?.includes('24-hour')) {

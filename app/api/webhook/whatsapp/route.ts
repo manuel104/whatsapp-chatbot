@@ -209,7 +209,117 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ status: 'success', action: 'admin_help' });
       }
       
-      // Check for admin response (SI/NO + ORDER_ID)
+      // Check for approve/reject button presses (approve_ORD123 or reject_ORD123)
+      if (command.startsWith('approve_') || command.startsWith('reject_')) {
+        const action = command.startsWith('approve_') ? 'APPROVE' : 'REJECT';
+        const orderId = command.replace('approve_', '').replace('reject_', '');
+        
+        console.log(`Admin button pressed: ${action} for order ${orderId}`);
+        
+        // Get the pending order
+        const order = await getPendingOrder(orderId);
+        
+        if (!order) {
+          await kapsoClient.sendMessage({
+            to: from,
+            message: `❌ No se encontró el pedido ${orderId}`,
+            phoneNumberId: phoneNumberId,
+          });
+          return NextResponse.json({ status: 'success', action: 'order_not_found' });
+        }
+        
+        if (order.status !== 'PENDING') {
+          await kapsoClient.sendMessage({
+            to: from,
+            message: `⚠️ El pedido ${orderId} ya fue procesado (${order.status})`,
+            phoneNumberId: phoneNumberId,
+          });
+          return NextResponse.json({ status: 'success', action: 'order_already_processed' });
+        }
+        
+        // Update order status
+        const newStatus = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+        await updateOrderStatus(orderId, newStatus);
+        
+        // Notify customer
+        await notifyCustomerOrderStatus(
+          order.phone_number,
+          order.contact_name,
+          orderId,
+          newStatus,
+          phoneNumberId
+        );
+        
+        // If approved, generate invoice and update sale
+        let invoiceUrl = '';
+        if (newStatus === 'APPROVED') {
+          try {
+            // Generate invoice PDF and upload to Google Drive
+            console.log('Generating invoice...');
+            invoiceUrl = await generateAndUploadInvoice(
+              orderId,
+              order.contact_name,
+              order.phone_number,
+              order.items,
+              order.total,
+              order.payment_method
+            );
+            console.log('Invoice generated:', invoiceUrl);
+            
+            // Update sale status in Google Sheets to COMPLETADA with invoice URL
+            await updateSaleStatus(orderId, 'COMPLETADA', invoiceUrl);
+            console.log(`Sale ${orderId} updated to COMPLETADA in Google Sheets`);
+            
+            // Send invoice to customer
+            const invoiceMessage = `📄 *FACTURA*
+
+Tu factura ha sido generada exitosamente.
+
+📥 Descarga tu factura aquí:
+${invoiceUrl}
+
+¡Gracias por tu compra! 🎉`;
+            
+            await kapsoClient.sendMessage({
+              to: order.phone_number,
+              message: invoiceMessage,
+              phoneNumberId: phoneNumberId,
+            });
+            
+            console.log('Invoice sent to customer');
+          } catch (error) {
+            console.error('Error generating/sending invoice:', error);
+            // Continue even if invoice fails
+          }
+        } else {
+          // If rejected, update sale status in Google Sheets
+          try {
+            await updateSaleStatus(orderId, 'RECHAZADA');
+            console.log(`Sale ${orderId} updated to RECHAZADA in Google Sheets`);
+          } catch (error) {
+            console.error('Error updating rejected sale status:', error);
+          }
+        }
+        
+        // Confirm to admin
+        const confirmMessage = newStatus === 'APPROVED'
+          ? `✅ Pedido ${orderId} APROBADO
+
+El cliente ha sido notificado.
+La venta fue registrada.
+${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'}`
+          : `❌ Pedido ${orderId} RECHAZADO\n\nEl cliente ha sido notificado.`;
+        
+        await kapsoClient.sendMessage({
+          to: from,
+          message: confirmMessage,
+          phoneNumberId: phoneNumberId,
+        });
+        
+        return NextResponse.json({ status: 'success', action: 'order_processed_via_button', newStatus, invoiceUrl });
+      }
+      
+      // Check for admin response (SI/NO + ORDER_ID) - mantener compatibilidad con texto
       const adminResponse = parseAdminResponse(text);
       
       if (adminResponse.action && adminResponse.orderId) {
