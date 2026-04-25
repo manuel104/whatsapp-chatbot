@@ -8,7 +8,7 @@ import { getStoreData } from './google-sheets';
 import { getKapsoClient } from './kapso';
 
 /**
- * Envía lista de pedidos pendientes al admin
+ * Envía lista de pedidos pendientes al admin con botones para cada pedido
  */
 export async function sendPendingOrdersList(
   adminPhone: string,
@@ -33,35 +33,63 @@ No hay pedidos pendientes en este momento. ✅`;
       return;
     }
 
-    // Formatear lista de pedidos
-    const ordersList = pendingOrders.map((order, index) => {
+    const kapsoClient = getKapsoClient();
+
+    // Enviar cada pedido con sus propios botones
+    for (const order of pendingOrders) {
       const itemsCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
-      return `${index + 1}. *${order.id}*
-   Cliente: ${order.contact_name}
-   Tel: ${order.phone_number}
-   Items: ${itemsCount} productos
-   Total: ${simbolo_moneda}${order.total.toLocaleString()}
-   Método: ${order.payment_method}
-   Fecha: ${new Date(order.created_at).toLocaleString('es-CO', { timeZone: 'America/Bogota' })}`;
-    }).join('\n\n');
+      
+      // Detalles de productos
+      const itemsList = order.items.map(item =>
+        `• ${item.product_name} x${item.quantity} - ${simbolo_moneda}${(item.price * item.quantity).toLocaleString()}`
+      ).join('\n');
+      
+      const message = `🔔 *PEDIDO PENDIENTE*
 
-    const message = `📋 *PEDIDOS PENDIENTES* (${pendingOrders.length})
+📋 ID: *${order.id}*
+👤 Cliente: ${order.contact_name}
+📱 Teléfono: ${order.phone_number}
+💳 Método de pago: ${order.payment_method}
 
-${ordersList}
+🛒 *Productos:*
+${itemsList}
+
+💰 *Total: ${simbolo_moneda}${order.total.toLocaleString()}*
+
+⏰ Pedido recibido: ${new Date(order.created_at).toLocaleString('es-CO', { timeZone: 'America/Bogota' })}
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━
-Para aprobar un pedido:
-✅ *SI ${pendingOrders[0].id}*
+⚠️ *ACCIÓN REQUERIDA*
 
-Para rechazar un pedido:
-❌ *NO ${pendingOrders[0].id}*`;
+Para aprobar, responde:
+✅ *SI ${order.id}*
 
-    const kapsoClient = getKapsoClient();
-    await kapsoClient.sendMessage({
-      to: adminPhone,
-      message: message,
-      phoneNumberId: phoneNumberId,
-    });
+Para rechazar, responde:
+❌ *NO ${order.id}*
+
+O usa los botones de abajo ↓`;
+
+      // Crear botones para este pedido específico
+      const shortOrderId = order.id.substring(0, 10);
+      const buttons = [
+        {
+          id: `approve_${order.id}`,
+          title: `✅ ${shortOrderId}`
+        },
+        {
+          id: `reject_${order.id}`,
+          title: `❌ ${shortOrderId}`
+        }
+      ];
+
+      // Enviar mensaje con botones
+      await kapsoClient.sendMessage({
+        to: adminPhone,
+        message: message,
+        phoneNumberId: phoneNumberId,
+        buttons: buttons,
+      });
+    }
 
     console.log(`Pending orders list sent to admin: ${pendingOrders.length} orders`);
   } catch (error) {

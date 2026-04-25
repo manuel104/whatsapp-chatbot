@@ -112,7 +112,8 @@ export async function notifyCustomerOrderStatus(
   customerName: string,
   orderId: string,
   status: 'APPROVED' | 'REJECTED',
-  phoneNumberId: string
+  phoneNumberId: string,
+  invoiceUrl?: string
 ): Promise<void> {
   try {
     const kapsoClient = getKapsoClient();
@@ -126,6 +127,18 @@ Hola ${customerName},
 Tu pedido *${orderId}* ha sido aprobado y está siendo procesado.
 
 Pronto recibirás tu pedido. ¡Gracias por tu compra! 🎉`;
+
+      // Si hay factura, agregarla al mensaje
+      if (invoiceUrl) {
+        message += `
+
+📄 *FACTURA GENERADA*
+
+Tu factura ha sido generada exitosamente.
+
+📥 Descarga tu factura aquí:
+${invoiceUrl}`;
+      }
     } else {
       message = `❌ *PEDIDO RECHAZADO*
 

@@ -5,6 +5,7 @@
 
 import { jsPDF } from 'jspdf';
 import { google } from 'googleapis';
+import { Readable } from 'stream';
 import type { CartItem } from '@/types/store';
 import { getStoreData } from './google-sheets';
 
@@ -163,9 +164,12 @@ export async function uploadToGoogleDrive(
       mimeType: 'application/pdf',
     };
     
+    // Convertir Buffer a Stream para Google Drive API
+    const bufferStream = Readable.from(pdfBuffer);
+    
     const media = {
       mimeType: 'application/pdf',
-      body: Buffer.from(pdfBuffer),
+      body: bufferStream,
     };
     
     const file = await drive.files.create({

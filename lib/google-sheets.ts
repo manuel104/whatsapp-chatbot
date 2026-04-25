@@ -349,6 +349,7 @@ export async function updateSaleStatus(
   facturaUrl?: string
 ): Promise<void> {
   try {
+    console.log(`[updateSaleStatus] Searching for sale ID: ${saleId}`);
     const sheets = getGoogleSheetsClient();
     
     // Leer todas las ventas para encontrar la fila
@@ -358,14 +359,23 @@ export async function updateSaleStatus(
     });
     
     const rows = response.data.values || [];
+    console.log(`[updateSaleStatus] Total rows in VENTAS sheet: ${rows.length}`);
+    
+    // Log de los primeros IDs para debugging
+    if (rows.length > 0) {
+      console.log(`[updateSaleStatus] First 5 sale IDs in sheet:`, rows.slice(0, 5).map(r => r[0]));
+    }
     
     // Encontrar la fila con el ID de venta (columna A)
     const rowIndex = rows.findIndex(row => row[0] === saleId);
     
     if (rowIndex === -1) {
-      console.warn(`Sale ${saleId} not found in Google Sheets`);
+      console.error(`[updateSaleStatus] ❌ Sale ${saleId} NOT FOUND in Google Sheets`);
+      console.error(`[updateSaleStatus] Available IDs:`, rows.map(r => r[0]).join(', '));
       return;
     }
+    
+    console.log(`[updateSaleStatus] ✅ Found sale at row ${rowIndex + 1}`);
     
     // Actualizar estado (columna G) y factura_url (columna H) si se proporciona
     const updates: any[] = [
@@ -382,6 +392,8 @@ export async function updateSaleStatus(
       });
     }
     
+    console.log(`[updateSaleStatus] Updating ranges:`, updates.map(u => u.range).join(', '));
+    
     await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId: SPREADSHEET_ID,
       requestBody: {
@@ -390,9 +402,9 @@ export async function updateSaleStatus(
       },
     });
     
-    console.log(`Sale ${saleId} updated to ${newStatus}`);
+    console.log(`[updateSaleStatus] ✅ Sale ${saleId} updated to ${newStatus}${facturaUrl ? ' with invoice URL' : ''}`);
   } catch (error) {
-    console.error('Error updating sale status:', error);
+    console.error('[updateSaleStatus] Error updating sale status:', error);
     throw error;
   }
 }

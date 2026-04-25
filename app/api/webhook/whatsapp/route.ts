@@ -241,16 +241,7 @@ export async function POST(request: NextRequest) {
         const newStatus = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
         await updateOrderStatus(orderId, newStatus);
         
-        // Notify customer
-        await notifyCustomerOrderStatus(
-          order.phone_number,
-          order.contact_name,
-          orderId,
-          newStatus,
-          phoneNumberId
-        );
-        
-        // If approved, generate invoice and update sale
+        // If approved, generate invoice first
         let invoiceUrl = '';
         if (newStatus === 'APPROVED') {
           try {
@@ -269,26 +260,8 @@ export async function POST(request: NextRequest) {
             // Update sale status in Google Sheets to COMPLETADA with invoice URL
             await updateSaleStatus(orderId, 'COMPLETADA', invoiceUrl);
             console.log(`Sale ${orderId} updated to COMPLETADA in Google Sheets`);
-            
-            // Send invoice to customer
-            const invoiceMessage = `📄 *FACTURA*
-
-Tu factura ha sido generada exitosamente.
-
-📥 Descarga tu factura aquí:
-${invoiceUrl}
-
-¡Gracias por tu compra! 🎉`;
-            
-            await kapsoClient.sendMessage({
-              to: order.phone_number,
-              message: invoiceMessage,
-              phoneNumberId: phoneNumberId,
-            });
-            
-            console.log('Invoice sent to customer');
           } catch (error) {
-            console.error('Error generating/sending invoice:', error);
+            console.error('Error generating/uploading invoice:', error);
             // Continue even if invoice fails
           }
         } else {
@@ -348,16 +321,7 @@ ${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'
         const newStatus = adminResponse.action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
         await updateOrderStatus(adminResponse.orderId, newStatus);
         
-        // Notify customer
-        await notifyCustomerOrderStatus(
-          order.phone_number,
-          order.contact_name,
-          adminResponse.orderId,
-          newStatus,
-          phoneNumberId
-        );
-        
-        // If approved, generate invoice and update sale
+        // If approved, generate invoice first
         let invoiceUrl = '';
         if (newStatus === 'APPROVED') {
           try {
@@ -376,26 +340,8 @@ ${invoiceUrl ? `Factura generada: ${invoiceUrl}` : 'Factura enviada al cliente.'
             // Update sale status in Google Sheets to COMPLETADA with invoice URL
             await updateSaleStatus(adminResponse.orderId, 'COMPLETADA', invoiceUrl);
             console.log(`Sale ${adminResponse.orderId} updated to COMPLETADA in Google Sheets`);
-            
-            // Send invoice to customer
-            const invoiceMessage = `📄 *FACTURA*
-
-Tu factura ha sido generada exitosamente.
-
-📥 Descarga tu factura aquí:
-${invoiceUrl}
-
-¡Gracias por tu compra! 🎉`;
-            
-            await kapsoClient.sendMessage({
-              to: order.phone_number,
-              message: invoiceMessage,
-              phoneNumberId: phoneNumberId,
-            });
-            
-            console.log('Invoice sent to customer');
           } catch (error) {
-            console.error('Error generating/sending invoice:', error);
+            console.error('Error generating/uploading invoice:', error);
             // Continue even if invoice fails
           }
         } else {
@@ -407,6 +353,16 @@ ${invoiceUrl}
             console.error('Error updating rejected sale status:', error);
           }
         }
+        
+        // Notify customer with invoice URL if approved
+        await notifyCustomerOrderStatus(
+          order.phone_number,
+          order.contact_name,
+          adminResponse.orderId,
+          newStatus,
+          phoneNumberId,
+          invoiceUrl || undefined
+        );
         
         // Confirm to admin
         const confirmMessage = newStatus === 'APPROVED'
