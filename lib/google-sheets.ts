@@ -32,7 +32,7 @@ function getGoogleSheetsClient() {
   
   const auth = new google.auth.GoogleAuth({
     credentials,
-    scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    scopes: ['https://www.googleapis.com/auth/spreadsheets'], // Read and write access
   });
 
   return google.sheets({ version: 'v4', auth });
