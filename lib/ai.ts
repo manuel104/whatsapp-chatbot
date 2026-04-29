@@ -33,7 +33,7 @@ export async function generateAIResponse({
     ];
 
     const { text } = await generateText({
-      model: openrouter('tencent/hy3-preview:free'),
+      model: openrouter('nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'),
       messages,
       temperature: 0.7,
     });
