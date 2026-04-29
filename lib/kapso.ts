@@ -189,24 +189,14 @@ class KapsoClient {
   }
 
   /**
-   * Download media from WhatsApp (images, documents, etc.)
-   * Returns the media URL or downloads the file
+   * Download media from WhatsApp using direct URL
+   * The URL comes from the webhook payload
    */
-  async downloadMedia(mediaId: string, phoneNumberId: string): Promise<string> {
+  async downloadMediaFromUrl(mediaUrl: string): Promise<string> {
     try {
-      // Step 1: Get media URL from WhatsApp Business API via Kapso
-      // Using the correct endpoint format for retrieving media info
-      const mediaEndpoint = `/meta/whatsapp/v24.0/${mediaId}`;
-      console.log('Getting media info for:', mediaId);
-      console.log('Using endpoint:', mediaEndpoint);
+      console.log('Downloading media from URL with authentication...');
       
-      const mediaResponse = await this.client.get(mediaEndpoint);
-      const mediaUrl = mediaResponse.data.url;
-      
-      console.log('Media URL obtained:', mediaUrl);
-      
-      // Step 2: Download the actual media file
-      // The media URL from WhatsApp requires authentication with the same API key
+      // Download the media file with proper authentication
       const downloadResponse = await axios.get(mediaUrl, {
         headers: {
           'Authorization': `Bearer ${this.apiKey}`,
@@ -216,21 +206,45 @@ class KapsoClient {
         timeout: 30000, // 30 seconds timeout for large images
       });
       
-      // Convert to base64 for easier handling
+      // Convert to base64 for AI processing
       const base64Image = Buffer.from(downloadResponse.data, 'binary').toString('base64');
       const mimeType = downloadResponse.headers['content-type'] || 'image/jpeg';
       
       console.log('Media downloaded successfully, size:', downloadResponse.data.length, 'bytes');
+      console.log('MIME type:', mimeType);
       
       // Return as data URL for AI processing
       return `data:${mimeType};base64,${base64Image}`;
     } catch (error: any) {
+      console.error('Error downloading media from URL:', error.message);
+      console.error('Status:', error.response?.status);
+      console.error('Error response:', JSON.stringify(error.response?.data, null, 2));
+      throw new Error(`Failed to download media from URL: ${error.message}`);
+    }
+  }
+
+  /**
+   * Download media from WhatsApp (images, documents, etc.) using media ID
+   * Returns the media as base64 data URL
+   */
+  async downloadMedia(mediaId: string, phoneNumberId: string): Promise<string> {
+    try {
+      // Step 1: Get media URL from WhatsApp Business API via Kapso
+      const mediaEndpoint = `/meta/whatsapp/v24.0/${mediaId}`;
+      console.log('Getting media info for:', mediaId);
+      console.log('Using endpoint:', mediaEndpoint);
+      
+      const mediaResponse = await this.client.get(mediaEndpoint);
+      const mediaUrl = mediaResponse.data.url;
+      
+      console.log('Media URL obtained:', mediaUrl);
+      
+      // Step 2: Download using the URL
+      return await this.downloadMediaFromUrl(mediaUrl);
+    } catch (error: any) {
       console.error('Error downloading media:', error.message);
       console.error('Status:', error.response?.status);
       console.error('Error response:', JSON.stringify(error.response?.data, null, 2));
-      
-      // If the first method fails, try alternative approach
-      // Some providers return the media URL directly in the webhook
       throw new Error(`Failed to download media from WhatsApp: ${error.message}`);
     }
   }

@@ -195,12 +195,13 @@ export async function POST(request: NextRequest) {
         // Send typing indicator
         await kapsoClient.sendTypingIndicator(from, phoneNumberId);
         
-        // Use the direct URL from WhatsApp (no need to download)
-        console.log('Using image URL directly:', imageUrl);
+        // Download the image with proper authentication
+        console.log('Downloading image from WhatsApp URL:', imageUrl);
+        const imageDataUrl = await kapsoClient.downloadMediaFromUrl(imageUrl);
         
         // Extract text from image using OCR
         console.log('Extracting text from image...');
-        const extractedText = await extractTextFromImage(imageUrl);
+        const extractedText = await extractTextFromImage(imageDataUrl);
         
         // Get or create conversation
         const conversation = await getOrCreateConversation(from, contactName);
