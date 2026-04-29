@@ -194,29 +194,38 @@ class KapsoClient {
    */
   async downloadMedia(mediaId: string, phoneNumberId: string): Promise<string> {
     try {
-      // Step 1: Get media URL from WhatsApp
-      const mediaEndpoint = `/meta/whatsapp/v24.0/${mediaId}`;
+      // Step 1: Get media URL from WhatsApp Business API
+      const mediaEndpoint = `/meta/whatsapp/v24.0/${phoneNumberId}/media/${mediaId}`;
       console.log('Getting media URL for:', mediaId);
+      console.log('Using endpoint:', mediaEndpoint);
       
       const mediaResponse = await this.client.get(mediaEndpoint);
       const mediaUrl = mediaResponse.data.url;
       
       console.log('Media URL obtained:', mediaUrl);
       
-      // Step 2: Download the actual media file
-      const downloadResponse = await this.client.get(mediaUrl, {
-        responseType: 'arraybuffer'
+      // Step 2: Download the actual media file using the URL
+      // The URL requires the same API key for authentication
+      const downloadResponse = await axios.get(mediaUrl, {
+        headers: {
+          'X-API-Key': this.apiKey,
+        },
+        responseType: 'arraybuffer',
+        timeout: 30000, // 30 seconds timeout for large images
       });
       
       // Convert to base64 for easier handling
       const base64Image = Buffer.from(downloadResponse.data, 'binary').toString('base64');
       const mimeType = downloadResponse.headers['content-type'] || 'image/jpeg';
       
+      console.log('Media downloaded successfully, size:', downloadResponse.data.length, 'bytes');
+      
       // Return as data URL for AI processing
       return `data:${mimeType};base64,${base64Image}`;
     } catch (error: any) {
       console.error('Error downloading media:', error.message);
-      console.error('Error response:', error.response?.data);
+      console.error('Status:', error.response?.status);
+      console.error('Error response:', JSON.stringify(error.response?.data, null, 2));
       throw new Error('Failed to download media from WhatsApp');
     }
   }
