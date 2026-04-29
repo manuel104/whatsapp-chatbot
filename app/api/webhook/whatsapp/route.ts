@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getKapsoClient } from '@/lib/kapso';
-import { generateAIResponse } from '@/lib/ai';
+import { generateAIResponse, extractTextFromImage } from '@/lib/ai';
 import {
   getOrCreateConversation,
   startNewConversation,
@@ -97,6 +97,8 @@ export async function POST(request: NextRequest) {
     let messageId: string;
     let phoneNumberId: string;
     let contactName: string | undefined;
+    let imageMediaId: string | undefined;
+    let hasImage = false;
     
     // Handle WhatsApp Business API format (Meta/Facebook)
     if (payload.object === 'whatsapp_business_account') {
@@ -126,7 +128,7 @@ export async function POST(request: NextRequest) {
         console.log(`Contact name from WhatsApp profile: ${contactName}`);
       }
       
-      // Handle both text messages and interactive button responses
+      // Handle text, interactive button responses, and images
       if (type === 'text') {
         text = messages.text?.body || '';
       } else if (type === 'interactive') {
@@ -134,6 +136,12 @@ export async function POST(request: NextRequest) {
         const buttonReply = messages.interactive?.button_reply;
         text = buttonReply?.id || buttonReply?.title || '';
         console.log(`Button clicked: ${text}`);
+      } else if (type === 'image') {
+        // Image message - extract media ID and caption
+        imageMediaId = messages.image?.id;
+        text = messages.image?.caption || 'Imagen recibida';
+        hasImage = true;
+        console.log(`Image received with media ID: ${imageMediaId}`);
       } else {
         text = '';
       }
@@ -145,8 +153,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ status: 'error', message: 'Missing phone_number_id' }, { status: 400 });
       }
       
-      // Only process text and interactive messages
-      if ((type !== 'text' && type !== 'interactive') || !text) {
+      // Process text, interactive, and image messages
+      if ((type !== 'text' && type !== 'interactive' && type !== 'image') || (!text && !hasImage)) {
         console.log(`Ignoring message of type: ${type}`);
         return NextResponse.json({ status: 'ignored' });
       }
@@ -174,6 +182,65 @@ export async function POST(request: NextRequest) {
     if (!dbInitialized) {
       await initDatabase();
       dbInitialized = true;
+    }
+
+    // Handle image messages with OCR
+    if (hasImage && imageMediaId) {
+      console.log('Processing image message with OCR...');
+      
+      try {
+        // Send typing indicator
+        await kapsoClient.sendTypingIndicator(from, phoneNumberId);
+        
+        // Download the image
+        console.log('Downloading image from WhatsApp...');
+        const imageDataUrl = await kapsoClient.downloadMedia(imageMediaId, phoneNumberId);
+        
+        // Extract text from image using OCR
+        console.log('Extracting text from image...');
+        const extractedText = await extractTextFromImage(imageDataUrl);
+        
+        // Get or create conversation
+        const conversation = await getOrCreateConversation(from, contactName);
+        
+        // Save user message (image caption or default text)
+        await addMessage(conversation.id, from, 'user', `[Imagen] ${text}`);
+        
+        // Format response with extracted text
+        const responseText = `📸 *Texto extraído de la imagen:*\n\n${extractedText}`;
+        
+        // Send response
+        await kapsoClient.sendMessage({
+          to: from,
+          message: responseText,
+          phoneNumberId: phoneNumberId,
+        });
+        
+        // Save bot response
+        await addMessage(conversation.id, from, 'assistant', responseText);
+        
+        console.log('OCR processing completed successfully');
+        return NextResponse.json({
+          status: 'success',
+          action: 'ocr_processed',
+          extractedText
+        });
+        
+      } catch (error) {
+        console.error('Error processing image with OCR:', error);
+        
+        // Send error message to user
+        await kapsoClient.sendMessage({
+          to: from,
+          message: '❌ Lo siento, hubo un error al procesar la imagen. Por favor, intenta de nuevo.',
+          phoneNumberId: phoneNumberId,
+        });
+        
+        return NextResponse.json({
+          status: 'error',
+          message: 'OCR processing failed'
+        }, { status: 500 });
+      }
     }
 
     // Load store data

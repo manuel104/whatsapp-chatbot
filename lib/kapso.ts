@@ -187,6 +187,39 @@ class KapsoClient {
       // Don't throw - read status is not critical
     }
   }
+
+  /**
+   * Download media from WhatsApp (images, documents, etc.)
+   * Returns the media URL or downloads the file
+   */
+  async downloadMedia(mediaId: string, phoneNumberId: string): Promise<string> {
+    try {
+      // Step 1: Get media URL from WhatsApp
+      const mediaEndpoint = `/meta/whatsapp/v24.0/${mediaId}`;
+      console.log('Getting media URL for:', mediaId);
+      
+      const mediaResponse = await this.client.get(mediaEndpoint);
+      const mediaUrl = mediaResponse.data.url;
+      
+      console.log('Media URL obtained:', mediaUrl);
+      
+      // Step 2: Download the actual media file
+      const downloadResponse = await this.client.get(mediaUrl, {
+        responseType: 'arraybuffer'
+      });
+      
+      // Convert to base64 for easier handling
+      const base64Image = Buffer.from(downloadResponse.data, 'binary').toString('base64');
+      const mimeType = downloadResponse.headers['content-type'] || 'image/jpeg';
+      
+      // Return as data URL for AI processing
+      return `data:${mimeType};base64,${base64Image}`;
+    } catch (error: any) {
+      console.error('Error downloading media:', error.message);
+      console.error('Error response:', error.response?.data);
+      throw new Error('Failed to download media from WhatsApp');
+    }
+  }
 }
 
 // Singleton instance

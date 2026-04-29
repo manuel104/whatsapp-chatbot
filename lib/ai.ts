@@ -15,6 +15,7 @@ interface GenerateResponseParams {
   message: string;
   conversationHistory?: ChatMessage[];
   systemPrompt?: string;
+  imageUrl?: string; // URL de la imagen para análisis OCR
 }
 
 /**
@@ -24,13 +25,26 @@ export async function generateAIResponse({
   message,
   conversationHistory = [],
   systemPrompt = 'Eres un asistente útil de WhatsApp. Responde de manera amigable, concisa y profesional en español.',
+  imageUrl,
 }: GenerateResponseParams): Promise<string> {
   try {
-    const messages: ChatMessage[] = [
+    const messages: any[] = [
       { role: 'system', content: systemPrompt },
       ...conversationHistory,
-      { role: 'user', content: message },
     ];
+
+    // Si hay una imagen, crear mensaje con contenido multimodal
+    if (imageUrl) {
+      messages.push({
+        role: 'user',
+        content: [
+          { type: 'text', text: message },
+          { type: 'image', image: imageUrl }
+        ]
+      });
+    } else {
+      messages.push({ role: 'user', content: message });
+    }
 
     const { text } = await generateText({
       model: openrouter('nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'),
@@ -42,6 +56,43 @@ export async function generateAIResponse({
   } catch (error) {
     console.error('Error generating AI response:', error);
     throw new Error('Failed to generate AI response');
+  }
+}
+
+/**
+ * Extract text from image using OCR (Optical Character Recognition)
+ */
+export async function extractTextFromImage(imageUrl: string): Promise<string> {
+  try {
+    const systemPrompt = `Eres un experto en OCR (reconocimiento óptico de caracteres).
+Tu tarea es extraer TODO el texto visible en la imagen, incluyendo texto escrito a mano o impreso.
+
+INSTRUCCIONES:
+- Extrae TODO el texto que veas en la imagen
+- Mantén el formato y estructura del texto original
+- Si hay texto escrito a mano, haz tu mejor esfuerzo para interpretarlo
+- Si no hay texto en la imagen, responde: "No se detectó texto en la imagen"
+- NO agregues comentarios adicionales, solo el texto extraído`;
+
+    const { text } = await generateText({
+      model: openrouter('nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'),
+      messages: [
+        { role: 'system', content: systemPrompt },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Extrae todo el texto de esta imagen:' },
+            { type: 'image', image: imageUrl }
+          ]
+        }
+      ],
+      temperature: 0.3, // Baja temperatura para mayor precisión
+    });
+
+    return text;
+  } catch (error) {
+    console.error('Error extracting text from image:', error);
+    throw new Error('Failed to extract text from image');
   }
 }
 
