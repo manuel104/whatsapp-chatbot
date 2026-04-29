@@ -98,6 +98,7 @@ export async function POST(request: NextRequest) {
     let phoneNumberId: string;
     let contactName: string | undefined;
     let imageMediaId: string | undefined;
+    let imageUrl: string | undefined;
     let hasImage = false;
     
     // Handle WhatsApp Business API format (Meta/Facebook)
@@ -137,12 +138,13 @@ export async function POST(request: NextRequest) {
         text = buttonReply?.id || buttonReply?.title || '';
         console.log(`Button clicked: ${text}`);
       } else if (type === 'image') {
-        // Image message - extract media ID and caption
+        // Image message - extract media ID, URL and caption
         imageMediaId = messages.image?.id;
+        imageUrl = messages.image?.url; // Direct URL from WhatsApp
         text = messages.image?.caption || 'Imagen recibida';
         hasImage = true;
         console.log(`Image received with media ID: ${imageMediaId}`);
-        console.log('Full image object:', JSON.stringify(messages.image, null, 2));
+        console.log(`Image URL: ${imageUrl}`);
       } else {
         text = '';
       }
@@ -186,20 +188,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Handle image messages with OCR
-    if (hasImage && imageMediaId) {
+    if (hasImage && imageUrl) {
       console.log('Processing image message with OCR...');
       
       try {
         // Send typing indicator
         await kapsoClient.sendTypingIndicator(from, phoneNumberId);
         
-        // Download the image
-        console.log('Downloading image from WhatsApp...');
-        const imageDataUrl = await kapsoClient.downloadMedia(imageMediaId, phoneNumberId);
+        // Use the direct URL from WhatsApp (no need to download)
+        console.log('Using image URL directly:', imageUrl);
         
         // Extract text from image using OCR
         console.log('Extracting text from image...');
-        const extractedText = await extractTextFromImage(imageDataUrl);
+        const extractedText = await extractTextFromImage(imageUrl);
         
         // Get or create conversation
         const conversation = await getOrCreateConversation(from, contactName);
