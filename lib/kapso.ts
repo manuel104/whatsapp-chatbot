@@ -194,9 +194,10 @@ class KapsoClient {
    */
   async downloadMedia(mediaId: string, phoneNumberId: string): Promise<string> {
     try {
-      // Step 1: Get media URL from WhatsApp Business API
-      const mediaEndpoint = `/meta/whatsapp/v24.0/${phoneNumberId}/media/${mediaId}`;
-      console.log('Getting media URL for:', mediaId);
+      // Step 1: Get media URL from WhatsApp Business API via Kapso
+      // Using the correct endpoint format for retrieving media info
+      const mediaEndpoint = `/meta/whatsapp/v24.0/${mediaId}`;
+      console.log('Getting media info for:', mediaId);
       console.log('Using endpoint:', mediaEndpoint);
       
       const mediaResponse = await this.client.get(mediaEndpoint);
@@ -204,10 +205,11 @@ class KapsoClient {
       
       console.log('Media URL obtained:', mediaUrl);
       
-      // Step 2: Download the actual media file using the URL
-      // The URL requires the same API key for authentication
+      // Step 2: Download the actual media file
+      // The media URL from WhatsApp requires authentication with the same API key
       const downloadResponse = await axios.get(mediaUrl, {
         headers: {
+          'Authorization': `Bearer ${this.apiKey}`,
           'X-API-Key': this.apiKey,
         },
         responseType: 'arraybuffer',
@@ -226,7 +228,10 @@ class KapsoClient {
       console.error('Error downloading media:', error.message);
       console.error('Status:', error.response?.status);
       console.error('Error response:', JSON.stringify(error.response?.data, null, 2));
-      throw new Error('Failed to download media from WhatsApp');
+      
+      // If the first method fails, try alternative approach
+      // Some providers return the media URL directly in the webhook
+      throw new Error(`Failed to download media from WhatsApp: ${error.message}`);
     }
   }
 }

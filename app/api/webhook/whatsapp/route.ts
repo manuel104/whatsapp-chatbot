@@ -142,6 +142,7 @@ export async function POST(request: NextRequest) {
         text = messages.image?.caption || 'Imagen recibida';
         hasImage = true;
         console.log(`Image received with media ID: ${imageMediaId}`);
+        console.log('Full image object:', JSON.stringify(messages.image, null, 2));
       } else {
         text = '';
       }
